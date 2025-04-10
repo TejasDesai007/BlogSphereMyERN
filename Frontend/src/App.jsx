@@ -10,6 +10,8 @@ import NotFound from "./PageNotFound";
 import Navbar from "./Navbar";
 import Logout from "./Logout";
 import AddPost from "./posts/AddPost";
+import Posts from "./posts/ViewPost";
+
 
 function App() {
   return (
@@ -22,6 +24,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/registration" element={<Registration />} />
           <Route path="/add-post" element={<AddPost />} />
+          <Route path="/ViewPost" element={<Posts />} />
           <Route path="/logout" element={<Logout />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -53,10 +53,15 @@ router.post("/login", (req, res) => {
 
             const user = results[0];
 
-            const passwordMatch = await bcrypt.compare(password, user.PasswordHash);
+            const passwordMatch = await bcrypt.compare(password.trim(), user.PasswordHash.trim());
+            console.log(password);
+            console.log(user.PasswordHash);
             if (!passwordMatch) {
+                
                 return res.status(401).json({ message: "Invalid password!" });
             }
+            
+
 
             // Store user info in session
             req.session.user = { id: user.UserID, username: user.Username, email: user.Email };
