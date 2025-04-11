@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-quill/dist/quill.snow.css";
 import ReactQuill from "react-quill";
+
+
 
 const AddPost = () => {
     const navigate = useNavigate();
@@ -13,6 +16,12 @@ const AddPost = () => {
     const [previews, setPreviews] = useState([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    useEffect(() => {
+        const user = sessionStorage.getItem("user");
+        if (!user) {
+            navigate("/login");
+        }
+    }, [navigate]);
 
     const handleImageChange = (e) => {
         const files = Array.from(e.target.files).slice(0, 5); // max 5 images

@@ -1,50 +1,73 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
-import * as bootstrap from 'bootstrap'; // ✅ import all JS
-window.bootstrap = bootstrap;          // ✅ assign to global
-
+import * as bootstrap from 'bootstrap';
+window.bootstrap = bootstrap;
 
 export default function Homepage() {
   const [posts, setPosts] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [likes, setLikes] = useState({});
+  const navigate = useNavigate();
+  const [userLikedPosts, setUserLikedPosts] = useState({});
 
   const user = JSON.parse(sessionStorage.getItem("user"));
   const userID = user ? user.id : null;
 
   useEffect(() => {
-    const fetchPosts = async () => {
+    const fetchPostsLikesAndUserLikes = async () => {
       try {
-        const res = await axios.get("http://localhost:8082/api/posts/FetchPost");
-        setPosts(res.data);
+        const [postsRes, likesRes] = await Promise.all([
+          axios.get("http://localhost:8082/api/posts/FetchPost"),
+          axios.get("http://localhost:8082/api/posts/likes-count"),
+        ]);
+
+        setPosts(postsRes.data);
+        setLikes(likesRes.data);
+
+        if (userID) {
+          const userLikesRes = await axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`);
+          const likedMap = {};
+          userLikesRes.data.forEach(postID => likedMap[postID] = true);
+          setUserLikedPosts(likedMap);
+        }
+
       } catch (err) {
-        console.error("Error fetching posts:", err);
+        console.error("Error fetching data:", err);
       }
     };
 
-    fetchPosts();
+    fetchPostsLikesAndUserLikes();
   }, []);
 
-  // ✅ Force Bootstrap to initialize carousels after rendering
-  useEffect(() => {
-    const carousels = document.querySelectorAll('.carousel');
-    carousels.forEach(carousel => {
-      new window.bootstrap.Carousel(carousel, {
-        interval: 2500,
-        ride: 'carousel',
-        pause: false
-      });
-    });
-  }, [posts]);
-
-  const handleDelete = async (postID) => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
+  const handleLike = async (postID) => {
+    if (!userID) {
+      navigate('/login');
+      return;
+    }
 
     try {
-      await axios.delete(`http://localhost:8082/api/posts/DeletePost?postID=${postID}`);
-      setPosts(prev => prev.filter(post => post.postID !== postID));
+      const hasLiked = userLikedPosts[postID];
+
+      if (hasLiked) {
+        await axios.post("http://localhost:8082/api/posts/unlike", { postID, userID });
+      } else {
+        await axios.post("http://localhost:8082/api/posts/like", { postID, userID });
+      }
+
+      const [likesRes, userLikesRes] = await Promise.all([
+        axios.get("http://localhost:8082/api/posts/likes-count"),
+        axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`)
+      ]);
+
+      setLikes(likesRes.data);
+      const likedMap = {};
+      userLikesRes.data.forEach(postID => likedMap[postID] = true);
+      setUserLikedPosts(likedMap);
+
     } catch (err) {
-      console.error("Error deleting post:", err);
+      console.error("Error toggling like:", err);
     }
   };
 
@@ -55,7 +78,7 @@ export default function Homepage() {
 
   return (
     <div className="container py-5">
-      <h1 className="text-center mb-4"><i className="fas fa-blog"></i> Blog Home</h1>
+      <h1 className="text-center mb-4"><i className="fas fa-blog"></i></h1>
 
       <input
         type="text"
@@ -67,7 +90,7 @@ export default function Homepage() {
 
       <div className="row">
         {filteredPosts.map((post) => (
-          <div className="col-md-6 mb-4" key={post.postID}>
+          <div className="col-lg-4 col-md-6 mb-4" key={post.postID}>
             <div className="card h-100">
               {post.images.length > 0 && (
                 <div
@@ -82,7 +105,7 @@ export default function Homepage() {
                           src={`http://localhost:8082${imagePath}`}
                           className="d-block w-100"
                           alt="Post"
-                          style={{ maxHeight: "300px", objectFit: "cover" }}
+                          style={{ height: "200px", objectFit: "cover" }}
                         />
                       </div>
                     ))}
@@ -108,10 +131,23 @@ export default function Homepage() {
                 <h6 className="card-subtitle mb-2 text-muted">
                   By {post.userName} on {new Date(post.publishedAt).toLocaleDateString()}
                 </h6>
-
-                <a href={`/ViewPost?postID=${post.postID}`} className="card-link mt-auto">Read Blog</a>
-
                 
+
+                <div className="mt-auto d-flex justify-content-between align-items-center">
+                  <button
+                    className={`btn ${userLikedPosts[post.postID] ? "btn-danger" : "btn-outline-danger"} px-3 py-1`}
+                    onClick={() => handleLike(post.postID)}
+                  >
+                    <i className="fas fa-heart me-1"></i> {likes[post.postID] || 0}
+                  </button>
+
+                  <a
+                    href={`/ViewPost?postID=${post.postID}`}
+                    className="btn btn-sm btn-primary ms-2"
+                  >
+                    <i className="fas fa-eye"></i>
+                  </a>
+                </div>
               </div>
             </div>
           </div>

@@ -11,6 +11,7 @@ import Navbar from "./Navbar";
 import Logout from "./Logout";
 import AddPost from "./posts/AddPost";
 import Posts from "./posts/ViewPost";
+import Profile from "./profile";
 
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
           <Route path="/registration" element={<Registration />} />
           <Route path="/add-post" element={<AddPost />} />
           <Route path="/ViewPost" element={<Posts />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/logout" element={<Logout />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

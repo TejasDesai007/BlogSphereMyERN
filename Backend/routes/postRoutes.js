@@ -153,4 +153,99 @@ router.get("/FetchPost/:postID", (req, res) => {
     });
 });
 
+// POST /api/posts/like
+router.post("/like", async (req, res) => {
+    const { postID, userID } = req.body;
+
+    try {
+        // Avoid duplicate likes
+        await db.promise().query("INSERT IGNORE INTO Likes (PostID, UserID) VALUES (?, ?)", [postID, userID]);
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("Error adding like:", err);
+        res.sendStatus(500);
+    }
+});
+router.post("/unlike", async (req, res) => {
+    const { postID, userID } = req.body;
+
+    try {
+        await db.promise().query("DELETE FROM Likes WHERE PostID = ? AND UserID = ?", [postID, userID]);
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("Error removing like:", err);
+        res.sendStatus(500);
+    }
+});
+router.get("/user-liked/:userID", async (req, res) => {
+    const userID = req.params.userID;
+
+    try {
+        const [rows] = await db.promise().query("SELECT PostID FROM Likes WHERE UserID = ?", [userID]);
+        const likedPostIDs = rows.map(row => row.PostID);
+        res.json(likedPostIDs);
+    } catch (err) {
+        console.error("Error fetching user's liked posts:", err);
+        res.sendStatus(500);
+    }
+});
+
+
+// GET /api/posts/likes-count
+router.get("/likes-count", async (req, res) => {
+    const [rows] = await db.promise().query("SELECT PostID, COUNT(*) AS count FROM Likes GROUP BY PostID");
+    const likeMap = {};
+    rows.forEach(row => {
+        likeMap[row.PostID] = row.count;
+    });
+    res.json(likeMap);
+});
+
+router.get("/user/:userId", async (req, res) => {
+    const { userId } = req.params;
+    const query = `SELECT * FROM posts WHERE UserID = ? ORDER BY PublishedAt DESC`;
+
+    try {
+        const [rows] = await db.promise().query(query, [userId]);
+        res.json(rows);
+    } catch (error) {
+        console.error("Error fetching user posts:", error);
+        res.status(500).json({ message: "Server error while fetching posts" });
+    }
+});
+
+
+router.delete("/DeletePost/:postID", async (req, res) => {
+    const postID = req.params.postID;
+
+    try {
+        
+        const [images] = await db.promise().query("SELECT ImagePath FROM postImages WHERE postID = ?", [postID]);
+
+
+        images.forEach(img => {
+            const imgPath = path.join(__dirname, "../uploads", img.ImagePath);
+            if (fs.existsSync(imgPath)) {
+                fs.unlink(imgPath, err => {
+                    if (err) console.error("Error deleting image file:", err);
+                });
+            }
+        });
+
+
+        await db.promise().query("DELETE FROM postImages WHERE postID = ?", [postID]);
+
+
+        await db.promise().query("DELETE FROM posts WHERE postID = ?", [postID]);
+
+        res.status(200).json({ message: "Post and its images deleted successfully." });
+    } catch (err) {
+        console.error("Error deleting post:", err);
+        res.status(500).json({ message: "Server error while deleting the post." });
+    }
+});
+
+
+
+
 module.exports = router;

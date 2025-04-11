@@ -57,18 +57,18 @@ router.post("/login", (req, res) => {
             console.log(password);
             console.log(user.PasswordHash);
             if (!passwordMatch) {
-                
+
                 return res.status(401).json({ message: "Invalid password!" });
             }
-            
+
 
 
             // Store user info in session
             req.session.user = { id: user.UserID, username: user.Username, email: user.Email };
 
-            res.status(200).json({ 
-                message: "Login successful!", 
-                user: req.session.user 
+            res.status(200).json({
+                message: "Login successful!",
+                user: req.session.user
             });
         });
     } catch (error) {
@@ -92,5 +92,34 @@ router.post("/logout", (req, res) => {
         res.status(200).json({ message: "Logout successful!" });
     });
 });
+
+router.get("/profile/:userId", async (req, res) => {
+    const userId1 = req.params.userId;
+    const query = `SELECT * FROM users WHERE UserID = ?`;
+    const query1 = `SELECT COUNT(*) AS postCount FROM posts WHERE UserID = ?`;
+
+    console.log("Fetching profile for user:", userId1);
+
+    try {
+        const [rows] = await db.promise().query(query, [userId1]);
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const user = rows[0];
+
+        const [postRows] = await db.promise().query(query1, [userId1]);
+        const postCount = postRows[0].postCount;
+
+        res.json({
+            ...user,
+            postCount: postCount
+        });
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        res.status(500).json({ message: "Server error!" });
+    }
+});
+
 
 module.exports = router;
