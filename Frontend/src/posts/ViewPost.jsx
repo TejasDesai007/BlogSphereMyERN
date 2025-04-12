@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 import axios from "axios";
@@ -7,37 +7,143 @@ import he from 'he';
 
 export default function ViewPost() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const postID = searchParams.get("postID");
 
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
 
+  const [likes, setLikes] = useState(0);
+  const [hasLiked, setHasLiked] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const user = JSON.parse(sessionStorage.getItem("user"));
+  const userID = user ? user.id : null;
+  const [savedPosts, setSavedPosts] = useState({});
+
+  useEffect(() => {
+    const fetchSavedPosts = async () => {
+      if (!userID) return;
+      try {
+        const res = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+        const savedMap = {};
+        res.data.forEach(id => savedMap[id] = true);
+        setSavedPosts(savedMap);
+      } catch (err) {
+        console.error("Error fetching saved posts:", err);
+      }
+    };
+
+    fetchSavedPosts();
+  }, [userID]);
+
+
   useEffect(() => {
     const fetchPost = async () => {
       try {
         const res = await axios.get(`http://localhost:8082/api/posts/FetchPost?postID=${postID}`);
-        const posts = res.data;
-        const matchedPost = posts.find(p => p.postID === parseInt(postID));
+        const matchedPost = res.data.find(p => p.postID === parseInt(postID));
         setPost(matchedPost || null);
       } catch (err) {
         console.error("Error fetching post:", err);
-        setPost(null);
       } finally {
         setLoading(false);
       }
     };
 
+    const fetchLikeAndCommentData = async () => {
+      try {
+        const [likeRes, userLikeRes, commentRes] = await Promise.all([
+          axios.get(`http://localhost:8082/api/posts/likes-count`),
+          axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`),
+          axios.get(`http://localhost:8082/api/posts/comments/${postID}`)
+        ]);
+
+        setLikes(likeRes.data[postID] || 0);
+        setHasLiked(userLikeRes.data.includes(parseInt(postID)));
+        setComments(commentRes.data);
+      } catch (err) {
+        console.error("Error fetching like/comment data:", err);
+      }
+    };
+
     if (postID) {
       fetchPost();
+      fetchLikeAndCommentData();
     }
-  }, [postID]);
+  }, [postID, userID]);
 
-  // Decode HTML content safely when post is available
   const decodedContent = useMemo(() => {
     if (!post?.content) return '';
     return he.decode(post.content);
   }, [post]);
+
+  const handleLike = async () => {
+    if (!userID) {
+      navigate("/login");
+      return;
+    }
+
+    try {
+      if (hasLiked) {
+        await axios.post("http://localhost:8082/api/posts/unlike", { postID, userID });
+      } else {
+        await axios.post("http://localhost:8082/api/posts/like", { postID, userID });
+      }
+
+      const [likeRes, userLikeRes] = await Promise.all([
+        axios.get(`http://localhost:8082/api/posts/likes-count`),
+        axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`)
+      ]);
+
+      setLikes(likeRes.data[postID] || 0);
+      setHasLiked(userLikeRes.data.includes(parseInt(postID)));
+    } catch (err) {
+      console.error("Error toggling like:", err);
+    }
+  };
+  const handleSave = async (postID) => {
+    if (!userID) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const hasSaved = savedPosts[postID];
+
+      if (hasSaved) {
+        await axios.post("http://localhost:8082/api/posts/unsave-post", { postID, userID });
+      } else {
+        await axios.post("http://localhost:8082/api/posts/savepost", { postID, userID });
+      }
+
+      const res = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+      const savedMap = {};
+      res.data.forEach(postID => savedMap[postID] = true);
+      setSavedPosts(savedMap);
+    } catch (err) {
+      console.error("Error saving/unsaving post:", err);
+    }
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!userID || newComment.trim() === "") return;
+
+    try {
+      await axios.post("http://localhost:8082/api/posts/comments", {
+        postID,
+        userID,
+        comment: newComment
+      });
+
+      const res = await axios.get(`http://localhost:8082/api/posts/comments/${postID}`);
+      setComments(res.data);
+      setNewComment("");
+    } catch (err) {
+      console.error("Error posting comment:", err);
+    }
+  };
 
   if (loading) return <div className="container py-5">Loading...</div>;
 
@@ -46,86 +152,107 @@ export default function ViewPost() {
       {post ? (
         <>
           <h1 className="mb-3"><i className="fas fa-file-alt"></i> {post.title}</h1>
-          <h6 className="text-muted">By {post.userName} on {new Date(post.publishedAt).toLocaleDateString()}</h6>
-          <hr />
+          <h6 className="text-muted mb-3">
+            By {post.userName} on {new Date(post.publishedAt).toLocaleDateString()}
+          </h6>
 
-          {post.images && post.images.length > 0 && (
-            <div id={`carouselPost${postID}`} className="carousel slide my-4" data-bs-ride="carousel">
+          {/* Images Carousel */}
+          {post.images.length > 0 && (
+            <div id="carouselImages" className="carousel slide mb-4" data-bs-ride="carousel">
               <div className="carousel-inner">
                 {post.images.map((imagePath, index) => (
-                  <div className={`carousel-item ${index === 0 ? "active" : ""}`} key={index}>
+                  <div key={index} className={`carousel-item ${index === 0 ? "active" : ""}`}>
                     <img
                       src={`http://localhost:8082${imagePath}`}
-                      className="d-block w-100 img-fluid rounded"
-                      alt={`Post ${index + 1}`}
-                      style={{
-                        height: "500px",
-                        objectFit: "cover",
-                        objectPosition: "center",
-                        borderRadius: "10px",
-                        cursor: "pointer"
-                      }}
-                      onClick={() => setSelectedImage(imagePath)}
+                      className="d-block w-100"
+                      style={{ maxHeight: "400px", objectFit: "cover", cursor: "pointer" }}
+                      alt="Post"
+                      onClick={() => setSelectedImage(`http://localhost:8082${imagePath}`)}
                     />
+
                   </div>
                 ))}
               </div>
-              <button className="carousel-control-prev" type="button" data-bs-target={`#carouselPost${postID}`} data-bs-slide="prev">
-                <span className="carousel-control-prev-icon" aria-hidden="true"></span>
-                <span className="visually-hidden">Previous</span>
-              </button>
-              <button className="carousel-control-next" type="button" data-bs-target={`#carouselPost${postID}`} data-bs-slide="next">
-                <span className="carousel-control-next-icon" aria-hidden="true"></span>
-                <span className="visually-hidden">Next</span>
-              </button>
+              {post.images.length > 1 && (
+                <>
+                  <button className="carousel-control-prev" type="button" data-bs-target="#carouselImages" data-bs-slide="prev">
+                    <span className="carousel-control-prev-icon"></span>
+                  </button>
+                  <button className="carousel-control-next" type="button" data-bs-target="#carouselImages" data-bs-slide="next">
+                    <span className="carousel-control-next-icon"></span>
+                  </button>
+                </>
+              )}
             </div>
           )}
 
-          {/* Render the decoded content */}
-          <div dangerouslySetInnerHTML={{ __html: decodedContent }} />
+          <div className="mb-4" dangerouslySetInnerHTML={{ __html: decodedContent }}></div>
 
+          {/* Like and Comment Section */}
+          <div className="d-flex align-items-center mb-4">
+            <button
+              className={`btn ${hasLiked ? "btn-danger" : "btn-outline-danger"} me-3`}
+              onClick={handleLike}
+            >
+              <i className="fas fa-heart "></i> {likes}
+            </button>
+
+            <button
+              className={`btn ${savedPosts[post.postID] ? "btn-success" : "btn-outline-success"} px-3 py-1 ms-2`}
+              onClick={() => handleSave(post.postID)}
+            >
+              <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark `}></i>
+            </button>
+            <span className="text-muted">
+              <i className="fas fa-comments me-1 px-3 py-1 ms-2"></i> {comments.length} Comment{comments.length !== 1 && 's'}
+            </span>
+
+
+
+          </div>
+
+          {/* Comments List */}
+          <div className="mb-4">
+            {comments.length > 0 ? (
+              <ul className="list-group">
+                {comments.map((c, i) => (
+                  <li className="list-group-item" key={i}>
+                    <strong>{c.username}</strong>: {c.Content}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No comments yet.</p>
+            )}
+          </div>
+
+          {/* Add Comment Box */}
+          <div>
+            <textarea
+              className="form-control mb-2"
+              placeholder="Write a comment..."
+              rows="3"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+            ></textarea>
+            <button className="btn btn-primary" onClick={handleCommentSubmit}>Submit</button>
+          </div>
         </>
       ) : (
-        <div className="alert alert-danger">Post not found!</div>
+        <div className="alert alert-danger">Post not found</div>
+
       )}
-
-      {/* Full Image Modal */}
       {selectedImage && (
-        <div
-          className="modal show d-block"
-          tabIndex="-1"
-          onClick={() => setSelectedImage(null)}
-          style={{
-            backgroundColor: 'rgba(0,0,0,0.8)',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 1050
-          }}
-        >
-          <div
-            className="modal-dialog modal-xl modal-dialog-centered"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content bg-transparent border-0 position-relative">
-
-              {/* Close Button */}
-              <button
-                type="button"
-                className="btn-close btn-close-white position-absolute top-0 end-0 m-3"
-                aria-label="Close"
-                onClick={() => setSelectedImage(null)}
-                style={{ zIndex: 1060 }}
-              ></button>
-
-              <img
-                src={`http://localhost:8082${selectedImage}`}
-                className="img-fluid rounded"
-                style={{ maxHeight: "90vh", objectFit: "contain" }}
-                alt="Full View"
-              />
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Image Preview</h5>
+                <button type="button" className="btn-close" onClick={() => setSelectedImage(null)}></button>
+              </div>
+              <div className="modal-body text-center">
+                <img src={selectedImage} className="img-fluid" alt="Preview" />
+              </div>
             </div>
           </div>
         </div>

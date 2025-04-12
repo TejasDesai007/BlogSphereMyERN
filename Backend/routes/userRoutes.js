@@ -54,8 +54,7 @@ router.post("/login", (req, res) => {
             const user = results[0];
 
             const passwordMatch = await bcrypt.compare(password.trim(), user.PasswordHash.trim());
-            console.log(password);
-            console.log(user.PasswordHash);
+            
             if (!passwordMatch) {
 
                 return res.status(401).json({ message: "Invalid password!" });
@@ -98,7 +97,7 @@ router.get("/profile/:userId", async (req, res) => {
     const query = `SELECT * FROM users WHERE UserID = ?`;
     const query1 = `SELECT COUNT(*) AS postCount FROM posts WHERE UserID = ?`;
 
-    console.log("Fetching profile for user:", userId1);
+    
 
     try {
         const [rows] = await db.promise().query(query, [userId1]);

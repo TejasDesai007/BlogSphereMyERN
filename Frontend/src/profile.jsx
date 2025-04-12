@@ -13,6 +13,10 @@ const Profile = () => {
     const [postsLoading, setPostsLoading] = useState(false);
     const navigate = useNavigate();
     const storedUser = JSON.parse(sessionStorage.getItem("user"));
+    const [savedPosts, setSavedPosts] = useState([]);
+    const [showSavedPosts, setShowSavedPosts] = useState(false);
+    const [savedPostsLoading, setSavedPostsLoading] = useState(false);
+
 
     useEffect(() => {
         if (!storedUser) {
@@ -45,6 +49,25 @@ const Profile = () => {
         }
     };
 
+    const fetchSavedPosts = async () => {
+        if (showSavedPosts) {
+            setShowSavedPosts(false);
+            return;
+        }
+
+        if (!user) return;
+        setShowPosts(false);
+        setSavedPostsLoading(true);
+        try {
+            const res = await axios.get(`http://localhost:8082/api/posts/user-saved/${storedUser.id}`);
+            setSavedPosts(res.data);
+            setShowSavedPosts(true);
+        } catch (err) {
+            console.error("Error fetching saved posts:", err);
+        }
+        setSavedPostsLoading(false);
+    };
+
 
     const fetchUserPosts = async () => {
         if (showPosts) {
@@ -53,7 +76,7 @@ const Profile = () => {
         }
 
         if (!user) return;
-
+        setShowSavedPosts(false);
         setPostsLoading(true);
         try {
             const res = await axios.get(`http://localhost:8082/api/posts/user/${storedUser.id}`);
@@ -90,6 +113,9 @@ const Profile = () => {
                         <button className="btn btn-outline-primary me-2"><i className="fas fa-user-edit"></i></button>
                         <button className="btn btn-outline-success me-2" onClick={fetchUserPosts}>
                             <i className="fas fa-blog"></i>
+                        </button>
+                        <button className="btn btn-outline-success me-2" onClick={fetchSavedPosts}>
+                            <i className="fas fa-bookmark "></i>
                         </button>
                         <a href="/logout" className="btn btn-outline-danger"><i className="fas fa-sign-out-alt"></i></a>
                     </div>
@@ -140,6 +166,41 @@ const Profile = () => {
                     )}
                 </div>
             )}
+            {showSavedPosts && (
+                <div>
+                    <h4 className="fw-bold text-center mb-3">Saved Posts</h4>
+
+                    {savedPostsLoading ? (
+                        <div className="text-muted text-center">Loading saved posts...</div>
+                    ) : savedPosts.length === 0 ? (
+                        <div className="text-muted text-center">No saved posts yet.</div>
+                    ) : (
+                        savedPosts.map(post => (
+                            <div key={post.PostID} className="card shadow-sm rounded-4 mb-3">
+                                <div className="card-body">
+                                    <h5 className="card-title mb-1">{post.Title}</h5>
+                                    <div
+                                        className="text-muted mb-2"
+                                        dangerouslySetInnerHTML={{
+                                            __html: he.decode(post.Content.substring(0, 100)) + "..."
+                                        }}
+                                    />
+                                    <small className="text-secondary d-block mb-2">
+                                        Published on {new Date(post.PublishedAt).toLocaleDateString()}
+                                    </small>
+                                    <a
+                                        href={`/ViewPost?postID=${post.PostID}`}
+                                        className="btn btn-sm btn-primary"
+                                    >
+                                        <i className="fas fa-eye me-1"></i> View
+                                    </a>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
         </div>
 
 
