@@ -6,7 +6,8 @@ const xss = require("xss-clean");
 const path = require("path");
 
 const userRoutes = require("./routes/userRoutes");
-const postRoutes = require("./routes/postRoutes")
+const postRoutes = require("./routes/postRoutes");
+const followRoutes = require("./routes/followRoutes");
 const app = express();
 
 // Middleware
@@ -33,6 +34,7 @@ app.use(session({
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/follows", followRoutes);
 
 app.get("/", (req, res) => {
     return res.json("API is running...");

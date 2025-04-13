@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 import axios from "axios";
+import { Link } from "react-router-dom";
 import he from 'he';
 
 export default function ViewPost() {
@@ -148,116 +149,148 @@ export default function ViewPost() {
   if (loading) return <div className="container py-5">Loading...</div>;
 
   return (
-    <div className="container py-5">
-      {post ? (
-        <>
-          <h1 className="mb-3"><i className="fas fa-file-alt"></i> {post.title}</h1>
-          <h6 className="text-muted mb-3">
-            By {post.userName} on {new Date(post.publishedAt).toLocaleDateString()}
-          </h6>
+    <div className="card h-100">
+      <div className="card-body px-5 py-5">
+        {post ? (
+          <>
+            <h1 className="mb-3"><i className="fas fa-file-alt"></i> {post.title}</h1>
+            <h6 className="text-muted mb-3">
+              <span>
+                By <Link
+                  to={`/profile/${post.userId}`}
+                  className="bg-dark text-light px-2 py-1 rounded text-decoration-none"
+                >
+                  {post.userName}
+                </Link> on {new Date(post.publishedAt).toLocaleDateString()}
+              </span>
+            </h6>
 
-          {/* Images Carousel */}
-          {post.images.length > 0 && (
-            <div id="carouselImages" className="carousel slide mb-4" data-bs-ride="carousel">
-              <div className="carousel-inner">
-                {post.images.map((imagePath, index) => (
-                  <div key={index} className={`carousel-item ${index === 0 ? "active" : ""}`}>
-                    <img
-                      src={`http://localhost:8082${imagePath}`}
-                      className="d-block w-100"
-                      style={{ maxHeight: "400px", objectFit: "cover", cursor: "pointer" }}
-                      alt="Post"
-                      onClick={() => setSelectedImage(`http://localhost:8082${imagePath}`)}
-                    />
+            {/* Images Carousel */}
+            {post.images.length > 0 && (
+              <div id="carouselImages" className="carousel slide mb-4" data-bs-ride="carousel">
+                <div className="carousel-inner">
+                  {post.images.map((imagePath, index) => (
+                    <div key={index} className={`carousel-item ${index === 0 ? "active" : ""}`}>
+                      <img
+                        src={`http://localhost:8082${imagePath}`}
+                        className="d-block w-100"
+                        style={{ maxHeight: "400px", objectFit: "cover", cursor: "pointer" }}
+                        alt="Post"
+                        onClick={() => setSelectedImage(`http://localhost:8082${imagePath}`)}
+                      />
 
-                  </div>
-                ))}
+                    </div>
+                  ))}
+                </div>
+                {post.images.length > 1 && (
+                  <>
+                    <button className="carousel-control-prev" type="button" data-bs-target="#carouselImages" data-bs-slide="prev">
+                      <span className="carousel-control-prev-icon"></span>
+                    </button>
+                    <button className="carousel-control-next" type="button" data-bs-target="#carouselImages" data-bs-slide="next">
+                      <span className="carousel-control-next-icon"></span>
+                    </button>
+                  </>
+                )}
               </div>
-              {post.images.length > 1 && (
-                <>
-                  <button className="carousel-control-prev" type="button" data-bs-target="#carouselImages" data-bs-slide="prev">
-                    <span className="carousel-control-prev-icon"></span>
-                  </button>
-                  <button className="carousel-control-next" type="button" data-bs-target="#carouselImages" data-bs-slide="next">
-                    <span className="carousel-control-next-icon"></span>
-                  </button>
-                </>
+            )}
+
+            <div className="mb-4" dangerouslySetInnerHTML={{ __html: decodedContent }}></div>
+
+            {/* Like and Comment Section */}
+            <div className="d-flex align-items-center mb-4">
+              <button
+                className="btn me-3 text-white border-0"
+                onClick={handleLike}
+                style={{
+                  background: hasLiked
+                    ? "linear-gradient(to right, #ff416c, #ff4b2b)" // liked gradient
+                    : "linear-gradient(to right, #43cea2, #185a9d)", // neutral gradient
+                  color: hasLiked ? "white" : "#dc3545",
+                }}
+              >
+                <i className="fas fa-heart me-1"></i> {likes}
+              </button>
+
+              <button
+                className="btn px-3 py-1 ms-2 text-white border-0"
+                onClick={() => handleSave(post.postID)}
+                style={{
+                  background: savedPosts[post.postID]
+                    ? "linear-gradient(to right, #56ab2f, #a8e063)" // saved (green)
+                    : "linear-gradient(to right, #43cea2, #185a9d)", // unsaved
+                  color: savedPosts[post.postID] ? "white" : "#28a745",
+                }}
+              >
+                <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark`}></i>
+              </button>
+
+              <span
+                className="text-muted px-3 py-1 ms-2 d-inline-block"
+                style={{
+                  border: "linear-gradient(to right, #43cea2, #185a9d)",
+                  color: "white",
+                  borderRadius: "5px",
+                }}
+              >
+                <i className="fas fa-comments me-1"></i> {comments.length} Comment{comments.length !== 1 && "s"}
+              </span>
+
+
+
+
+            </div>
+
+            {/* Comments List */}
+            <div className="mb-4">
+              {comments.length > 0 ? (
+                <ul className="list-group">
+                  {comments.map((c, i) => (
+                    <li className="list-group-item" key={i}>
+                      <strong>{c.username}</strong>: {c.Content}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No comments yet.</p>
               )}
             </div>
-          )}
 
-          <div className="mb-4" dangerouslySetInnerHTML={{ __html: decodedContent }}></div>
+            {/* Add Comment Box */}
+            <div>
+              <textarea
+                className="form-control mb-2"
+                placeholder="Write a comment..."
+                rows="3"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+              ></textarea>
+              <button className="btn btn-primary" onClick={handleCommentSubmit}>Submit</button>
+            </div>
+          </>
+        ) : (
+          <div className="alert alert-danger">Post not found</div>
 
-          {/* Like and Comment Section */}
-          <div className="d-flex align-items-center mb-4">
-            <button
-              className={`btn ${hasLiked ? "btn-danger" : "btn-outline-danger"} me-3`}
-              onClick={handleLike}
-            >
-              <i className="fas fa-heart "></i> {likes}
-            </button>
-
-            <button
-              className={`btn ${savedPosts[post.postID] ? "btn-success" : "btn-outline-success"} px-3 py-1 ms-2`}
-              onClick={() => handleSave(post.postID)}
-            >
-              <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark `}></i>
-            </button>
-            <span className="text-muted">
-              <i className="fas fa-comments me-1 px-3 py-1 ms-2"></i> {comments.length} Comment{comments.length !== 1 && 's'}
-            </span>
-
-
-
-          </div>
-
-          {/* Comments List */}
-          <div className="mb-4">
-            {comments.length > 0 ? (
-              <ul className="list-group">
-                {comments.map((c, i) => (
-                  <li className="list-group-item" key={i}>
-                    <strong>{c.username}</strong>: {c.Content}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>No comments yet.</p>
-            )}
-          </div>
-
-          {/* Add Comment Box */}
-          <div>
-            <textarea
-              className="form-control mb-2"
-              placeholder="Write a comment..."
-              rows="3"
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-            ></textarea>
-            <button className="btn btn-primary" onClick={handleCommentSubmit}>Submit</button>
-          </div>
-        </>
-      ) : (
-        <div className="alert alert-danger">Post not found</div>
-
-      )}
-      {selectedImage && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Image Preview</h5>
-                <button type="button" className="btn-close" onClick={() => setSelectedImage(null)}></button>
-              </div>
-              <div className="modal-body text-center">
-                <img src={selectedImage} className="img-fluid" alt="Preview" />
+        )}
+        {selectedImage && (
+          <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Image Preview</h5>
+                  <button type="button" className="btn-close" onClick={() => setSelectedImage(null)}></button>
+                </div>
+                <div className="modal-body text-center">
+                  <img src={selectedImage} className="img-fluid" alt="Preview" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
+      </div>
     </div>
+
+
   );
 }

@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import * as bootstrap from 'bootstrap';
+import { Link } from 'react-router-dom';
 window.bootstrap = bootstrap;
 
 export default function Homepage() {
@@ -15,6 +16,10 @@ export default function Homepage() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [savedPosts, setSavedPosts] = useState({});
+  const [followMap, setFollowMap] = useState({});
+
+
+  const [isFollowing, setIsFollowing] = useState(false);
 
 
   const navigate = useNavigate();
@@ -31,6 +36,7 @@ export default function Homepage() {
         ]);
 
         setPosts(postsRes.data);
+        // console.log(postsRes.data);
         setLikes(likesRes.data);
         setCommentCounts(commentsCountRes.data);
 
@@ -44,8 +50,22 @@ export default function Homepage() {
           const userSavedRes = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
           const savedMap = {};
           userSavedRes.data.forEach(postID => savedMap[postID] = true);
-          console.log(savedMap);
+          // console.log(savedMap);
           setSavedPosts(savedMap);
+
+          const followStatuses = {};
+          const uniqueAuthorIDs = [...new Set(postsRes.data.map(post => post.userId))].filter(id => id !== userID);
+
+          for (let authorId of uniqueAuthorIDs) {
+            try {
+              const res = await axios.get(`http://localhost:8082/api/follows/check?followerId=${userID}&followedId=${authorId}`);
+              followStatuses[authorId] = res.data.isFollowing;
+            } catch (err) {
+              console.error(`Error checking follow status for user ${authorId}:`, err);
+            }
+          }
+
+          setFollowMap(followStatuses);
 
         }
 
@@ -56,6 +76,35 @@ export default function Homepage() {
 
     fetchAll();
   }, []);
+
+
+  const handleFollow = async (followedId) => {
+    try {
+      await axios.post("http://localhost:8082/api/follows", {
+        followerId: userID,
+        followedId,
+      });
+      setFollowMap(prev => ({ ...prev, [followedId]: true }));
+    } catch (err) {
+      console.error("Follow failed", err);
+    }
+  };
+
+  const handleUnfollow = async (followedId) => {
+    try {
+      await axios.delete("http://localhost:8082/api/follows", {
+        data: {
+          followerId: userID,
+          followedId,
+        },
+      });
+      setFollowMap(prev => ({ ...prev, [followedId]: false }));
+    } catch (err) {
+      console.error("Unfollow failed", err);
+    }
+  };
+
+
 
   const handleSave = async (postID) => {
     if (!userID) {
@@ -130,7 +179,7 @@ export default function Homepage() {
     }
     try {
       const res = await axios.get(`http://localhost:8082/api/posts/comments/${postID}`);
-      console.log(res.data);
+      // console.log(res.data);
       setComments(res.data);
       setShowCommentsPostID(postID);
     } catch (err) {
@@ -165,9 +214,8 @@ export default function Homepage() {
   );
 
   return (
-    <div className="container py-5">
+    <>
       <h1 className="text-center mb-4"><i className="fas fa-blog"></i></h1>
-
       <input
         type="text"
         className="form-control mb-4"
@@ -215,37 +263,107 @@ export default function Homepage() {
 
               <div className="card-body d-flex flex-column">
                 <h5 className="card-title">{post.title}</h5>
-                <h6 className="card-subtitle mb-2 text-muted">
-                  By {post.userName} on {new Date(post.publishedAt).toLocaleDateString()}
+                <h6 className="card-subtitle mb-2 text-muted d-flex align-items-center justify-content-between">
+                  <span>
+                    By <Link
+                      to={`/profile/${post.userId}`}
+                      style={{
+                        background: "linear-gradient(to right, #667eea, #764ba2)",
+                        color: "white",
+                        padding: "0px 4px",
+                        borderRadius: "5px",
+                        textDecoration: "none"
+                      }}
+                    >
+                      {post.userName}
+                    </Link> on {new Date(post.publishedAt).toLocaleDateString()}
+                  </span>
+
+
+                  {user && user.id !== post.userId && (
+                    <span className="ms-2">
+                      {followMap[post.userId] ? (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleUnfollow(post.userId)}
+                          title="Unfollow"
+                        >
+                          <i className="fas fa-user-minus"></i>
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleFollow(post.userId)}
+                          title="Follow"
+                        >
+                          <i className="fas fa-user-plus"></i>
+                        </button>
+                      )}
+                    </span>
+                  )}
                 </h6>
 
                 <div className="mt-auto d-flex justify-content-between align-items-center">
                   <button
-                    className={`btn ${userLikedPosts[post.postID] ? "btn-danger" : "btn-outline-danger"} px-3 py-1`}
+                    className="btn px-3 py-1 text-white border-0"
                     onClick={() => handleLike(post.postID)}
+                    style={{
+                      background: userLikedPosts[post.postID]
+                        ? "linear-gradient(to right, #ff416c, #ff4b2b)" // liked gradient
+                        : "linear-gradient(to right, #43cea2, #185a9d)", // neutral gradient
+                      color: userLikedPosts[post.postID] ? "white" : "#dc3545"
+                    }}
                   >
-                    <i className="fas fa-heart "></i> {likes[post.postID] || 0}
+                    <i className="fas fa-heart me-1"></i> {likes[post.postID] || 0}
                   </button>
 
+
+
                   <button
-                    className="btn btn-sm btn-outline-secondary ms-2"
+                    className="btn btn-sm ms-2"
                     onClick={() => fetchComments(post.postID)}
+                    style={{
+                      background: "linear-gradient(to right, #43cea2, #185a9d)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      padding: "5px 10px",
+                    }}
                   >
                     <i className="fas fa-comments me-1"></i> {commentCounts[post.postID] || 0}
                   </button>
+
                   <button
-                    className={`btn ${savedPosts[post.postID] ? "btn-success" : "btn-outline-success"} px-3 py-1 ms-2`}
+                    className="btn px-3 py-1 ms-2"
                     onClick={() => handleSave(post.postID)}
+                    style={{
+                      background: savedPosts[post.postID]
+                        ? "linear-gradient(to right, #56ab2f, #a8e063)" // green gradient if saved
+                        : "linear-gradient(to right, #43cea2, #185a9d)", // blue-green gradient if not saved
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      transition: "background 0.3s ease",
+                    }}
                   >
-                    <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark me-1`}></i>
+                    <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark`}></i>
                   </button>
 
                   <a
                     href={`/ViewPost?postID=${post.postID}`}
-                    className="btn btn-sm btn-primary ms-2"
+                    className="btn btn-sm ms-2"
+                    style={{
+                      background: "linear-gradient(to right, #36d1dc, #5b86e5)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      padding: "5px 10px",
+                      textDecoration: "none",
+                    }}
                   >
                     <i className="fas fa-eye"></i>
                   </a>
+
                 </div>
               </div>
             </div>
@@ -293,6 +411,6 @@ export default function Homepage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

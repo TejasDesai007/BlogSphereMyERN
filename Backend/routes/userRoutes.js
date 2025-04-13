@@ -95,10 +95,8 @@ router.post("/logout", (req, res) => {
 router.get("/profile/:userId", async (req, res) => {
     const userId1 = req.params.userId;
     const query = `SELECT * FROM users WHERE UserID = ?`;
+    console.log(userId1);
     const query1 = `SELECT COUNT(*) AS postCount FROM posts WHERE UserID = ?`;
-
-    
-
     try {
         const [rows] = await db.promise().query(query, [userId1]);
         if (rows.length === 0) {
@@ -119,6 +117,8 @@ router.get("/profile/:userId", async (req, res) => {
         res.status(500).json({ message: "Server error!" });
     }
 });
+
+
 
 
 module.exports = router;

@@ -12,6 +12,9 @@ import Logout from "./Logout";
 import AddPost from "./posts/AddPost";
 import Posts from "./posts/ViewPost";
 import Profile from "./profile";
+import OtherProfile from "./OtherProfile";
+import "./App.css";
+
 
 
 function App() {
@@ -28,6 +31,7 @@ function App() {
           <Route path="/ViewPost" element={<Posts />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/logout" element={<Logout />} />
+          <Route path="/profile/:userID" element={<OtherProfile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
