@@ -308,10 +308,8 @@ export default function Homepage() {
                     className="btn px-3 py-1 text-white border-0"
                     onClick={() => handleLike(post.postID)}
                     style={{
-                      background: userLikedPosts[post.postID]
-                        ? "linear-gradient(to right, #ff416c, #ff4b2b)" // liked gradient
-                        : "linear-gradient(to right, #43cea2, #185a9d)", // neutral gradient
-                      color: userLikedPosts[post.postID] ? "white" : "#dc3545"
+                      backgroundColor: userLikedPosts[post.postID] ? "#dc3545" : "#f0f0f0",
+                      color: userLikedPosts[post.postID] ? "black" : "#dc3545"
                     }}
                   >
                     <i className="fas fa-heart me-1"></i> {likes[post.postID] || 0}
@@ -322,13 +320,7 @@ export default function Homepage() {
                   <button
                     className="btn btn-sm ms-2"
                     onClick={() => fetchComments(post.postID)}
-                    style={{
-                      background: "linear-gradient(to right, #43cea2, #185a9d)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "5px",
-                      padding: "5px 10px",
-                    }}
+
                   >
                     <i className="fas fa-comments me-1"></i> {commentCounts[post.postID] || 0}
                   </button>
@@ -336,15 +328,7 @@ export default function Homepage() {
                   <button
                     className="btn px-3 py-1 ms-2"
                     onClick={() => handleSave(post.postID)}
-                    style={{
-                      background: savedPosts[post.postID]
-                        ? "linear-gradient(to right, #56ab2f, #a8e063)" // green gradient if saved
-                        : "linear-gradient(to right, #43cea2, #185a9d)", // blue-green gradient if not saved
-                      color: "white",
-                      border: "none",
-                      borderRadius: "5px",
-                      transition: "background 0.3s ease",
-                    }}
+
                   >
                     <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark`}></i>
                   </button>

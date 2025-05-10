@@ -42,4 +42,27 @@ router.delete("/", (req, res) => {
   });
 });
 
+router.get("/getList/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const [rows] = await db
+      .promise()
+      .query(
+        `SELECT u.UserID, u.Username, u.Email, u.CreatedAt
+         FROM Follows f
+         JOIN Users u ON u.UserID = f.FollowedID
+         WHERE f.UserID = ?`,
+        [userId]
+      );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching follow list:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+
 module.exports = router;

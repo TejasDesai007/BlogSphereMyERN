@@ -17,6 +17,9 @@ const Profile = () => {
     const [showSavedPosts, setShowSavedPosts] = useState(false);
     const [savedPostsLoading, setSavedPostsLoading] = useState(false);
 
+    const [followedUsers, setFollowedUsers] = useState([]);
+    const [showFollows, setShowFollows] = useState(false);
+    const [followLoading, setFollowLoading] = useState(false);
 
     useEffect(() => {
         if (!storedUser) {
@@ -47,6 +50,26 @@ const Profile = () => {
             console.error("Error deleting post:", err);
             alert("Failed to delete the post. Please try again.");
         }
+    };
+    const fetchFollowedUsers = async () => {
+        if (showFollows) {
+            setShowFollows(false);
+            return;
+        }
+
+        setShowPosts(false);
+        setShowSavedPosts(false);
+        setFollowLoading(true);
+
+        try {
+            const res = await axios.get(`http://localhost:8082/api/follows/getList/${storedUser.id}`);
+            setFollowedUsers(res.data);
+            setShowFollows(true);
+        } catch (err) {
+            console.error("Error fetching followed users:", err);
+        }
+
+        setFollowLoading(false);
     };
 
     const fetchSavedPosts = async () => {
@@ -110,14 +133,58 @@ const Profile = () => {
                         {user.postCount || 0} Post{user.postCount === 1 ? "" : "s"}
                     </p>
                     <div className="mt-4">
-                        <button className="btn btn-outline-primary me-2"><i className="fas fa-user-edit"></i></button>
-                        <button className="btn btn-outline-success me-2" onClick={fetchUserPosts}>
+                        {/* Replaces the Edit Profile button */}
+                        <button
+                            className="btn px-3 py-1 me-2 text-white border-0"
+                            onClick={fetchFollowedUsers}
+                            style={{
+                                background: showFollows
+                                    ? "linear-gradient(to right, #56ab2f, #a8e063)"
+                                    : "linear-gradient(to right, #43cea2, #185a9d)",
+                                color: "white"
+                            }}
+                        >
+                            <i className="fas fa-users"></i>
+                        </button>
+
+
+                        <button
+                            className="btn px-3 py-1 me-2 text-white border-0"
+                            onClick={fetchUserPosts}
+                            style={{
+                                background: showPosts
+                                    ? "linear-gradient(to right, #56ab2f, #a8e063)" // show posts (green)
+                                    : "linear-gradient(to right, #43cea2, #185a9d)", // hide posts (blue)
+                                color: showPosts ? "white" : "#28a745",
+                            }}
+                        >
                             <i className="fas fa-blog"></i>
                         </button>
-                        <button className="btn btn-outline-success me-2" onClick={fetchSavedPosts}>
-                            <i className="fas fa-bookmark "></i>
+
+                        <button
+                            className="btn px-3 py-1 me-2 text-white border-0"
+                            onClick={fetchSavedPosts}
+                            style={{
+                                background: savedPosts
+                                    ? "linear-gradient(to right, #56ab2f, #a8e063)" // saved posts (green)
+                                    : "linear-gradient(to right, #43cea2, #185a9d)", // unsaved posts (blue)
+                                color: savedPosts ? "white" : "#28a745",
+                            }}
+                        >
+                            <i className="fas fa-bookmark"></i>
                         </button>
-                        <a href="/logout" className="btn btn-outline-danger"><i className="fas fa-sign-out-alt"></i></a>
+
+                        <a
+                            href="/logout"
+                            className="btn px-3 py-1 text-white border-0"
+                            style={{
+                                background: "linear-gradient(to right, #e43a45, #d08e73)", // gradient for logout button (red to orange)
+                                color: "white",
+                            }}
+                        >
+                            <i className="fas fa-sign-out-alt"></i>
+                        </a>
+
                     </div>
                 </div>
             </div>
@@ -166,6 +233,33 @@ const Profile = () => {
                     )}
                 </div>
             )}
+            {showFollows && (
+                <div>
+                    <h4 className="fw-bold text-center mb-3">Following</h4>
+                    {followLoading ? (
+                        <div className="text-muted text-center">Loading followed users...</div>
+                    ) : followedUsers.length === 0 ? (
+                        <div className="text-muted text-center">You are not following anyone yet.</div>
+                    ) : (
+                        <div className="row">
+                            {followedUsers.map((user, index) => (
+                                <div key={index} className="col-md-4 mb-3">
+                                    <div className="card shadow-sm rounded-4">
+                                        <div className="card-body text-center">
+                                            <i className="fas fa-user-circle fa-2x text-secondary mb-2"></i>
+                                            <h6 className="card-title">{user.Username}</h6>
+                                            <p className="card-text text-muted mb-0">
+                                                <i className="fas fa-envelope me-1"></i>{user.Email}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {showSavedPosts && (
                 <div>
                     <h4 className="fw-bold text-center mb-3">Saved Posts</h4>

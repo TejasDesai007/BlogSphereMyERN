@@ -158,11 +158,16 @@ export default function ViewPost() {
               <span>
                 By <Link
                   to={`/profile/${post.userId}`}
-                  className="bg-dark text-light px-2 py-1 rounded text-decoration-none"
+                  className="bg-dark text-light rounded text-decoration-none"
+                  style={{
+                    background: "linear-gradient(to right, #667eea, #764ba2)", // gradient effect
+                    color: "white",
+                  }}
                 >
-                  {post.userName}
+                  { post.userName}
                 </Link> on {new Date(post.publishedAt).toLocaleDateString()}
               </span>
+
             </h6>
 
             {/* Images Carousel */}
