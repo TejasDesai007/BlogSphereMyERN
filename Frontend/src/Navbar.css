@@ -1,0 +1,27 @@
+@keyframes pulseColor {
+    0% {
+        transform: scale(1);
+        color: #0d6efd; /* Blue */
+    }
+    25% {
+        transform: scale(1.1);
+        color: #20c997; /* Teal */
+    }
+    50% {
+        transform: scale(1.15);
+        color: #fd7e14; /* Orange */
+    }
+    75% {
+        transform: scale(1.1);
+        color: #dc3545; /* Red */
+    }
+    100% {
+        transform: scale(1);
+        color: #0d6efd; /* Back to Blue */
+    }
+}
+
+.animated-blog-icon {
+    animation: pulseColor 2s infinite;
+}
+
