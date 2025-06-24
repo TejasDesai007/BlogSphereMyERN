@@ -22,10 +22,10 @@ jobs:
 
     - name: Build and Push Backend
       run: |
-        docker build -t tejas056/backend ./backend
-        docker push tejas056/backend
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/backend ./backend
+        docker push ${{ secrets.DOCKER_USERNAME }}/backend
 
     - name: Build and Push Frontend
       run: |
-        docker build -t tejas056/frontend ./frontend
-        docker push tejas056/frontend
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/frontend ./frontend
+        docker push ${{ secrets.DOCKER_USERNAME }}/frontend
