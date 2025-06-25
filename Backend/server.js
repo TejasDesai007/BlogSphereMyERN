@@ -10,6 +10,7 @@ const postRoutes = require("./routes/postRoutes");
 const followRoutes = require("./routes/followRoutes");
 const app = express();
 
+
 // Middleware
 app.use(cors({
     credentials: true,

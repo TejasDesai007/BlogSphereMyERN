@@ -17,6 +17,8 @@ export default function Homepage() {
   const [newComment, setNewComment] = useState("");
   const [savedPosts, setSavedPosts] = useState({});
   const [followMap, setFollowMap] = useState({});
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 
 
   const [isFollowing, setIsFollowing] = useState(false);
@@ -30,9 +32,9 @@ export default function Homepage() {
     const fetchAll = async () => {
       try {
         const [postsRes, likesRes, commentsCountRes] = await Promise.all([
-          axios.get("http://localhost:8082/api/posts/FetchPost"),
-          axios.get("http://localhost:8082/api/posts/likes-count"),
-          axios.get("http://localhost:8082/api/posts/comments-count"),
+          axios.get(`${BASE_URL}/api/posts/FetchPost`),
+          axios.get(`${BASE_URL}/api/posts/likes-count`),
+          axios.get(`${BASE_URL}/api/posts/comments-count`),
         ]);
 
         setPosts(postsRes.data);
@@ -42,12 +44,12 @@ export default function Homepage() {
 
 
         if (userID) {
-          const userLikesRes = await axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`);
+          const userLikesRes = await axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`);
           const likedMap = {};
           userLikesRes.data.forEach(postID => likedMap[postID] = true);
           setUserLikedPosts(likedMap);
 
-          const userSavedRes = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+          const userSavedRes = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
           const savedMap = {};
           userSavedRes.data.forEach(postID => savedMap[postID] = true);
           // console.log(savedMap);
@@ -58,7 +60,7 @@ export default function Homepage() {
 
           for (let authorId of uniqueAuthorIDs) {
             try {
-              const res = await axios.get(`http://localhost:8082/api/follows/check?followerId=${userID}&followedId=${authorId}`);
+              const res = await axios.get(`${BASE_URL}/api/follows/check?followerId=${userID}&followedId=${authorId}`);
               followStatuses[authorId] = res.data.isFollowing;
             } catch (err) {
               console.error(`Error checking follow status for user ${authorId}:`, err);
@@ -80,7 +82,7 @@ export default function Homepage() {
 
   const handleFollow = async (followedId) => {
     try {
-      await axios.post("http://localhost:8082/api/follows", {
+      await axios.post(`${BASE_URL}/api/follows`, {
         followerId: userID,
         followedId,
       });
@@ -92,7 +94,7 @@ export default function Homepage() {
 
   const handleUnfollow = async (followedId) => {
     try {
-      await axios.delete("http://localhost:8082/api/follows", {
+      await axios.delete(`${BASE_URL}/api/follows`, {
         data: {
           followerId: userID,
           followedId,
@@ -122,15 +124,15 @@ export default function Homepage() {
       }));
 
       if (hasSaved) {
-        await axios.post("http://localhost:8082/api/posts/unsave-post", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/unsave-post`, { postID, userID });
       } else {
-        await axios.post("http://localhost:8082/api/posts/savepost", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/savepost`, { postID, userID });
       }
 
       // You can skip this re-fetch to prevent toggling flicker
       // Or keep it if backend is the true source of truth
 
-      const res = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+      const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
       const savedMap = {};
       res.data.forEach(postID => savedMap[postID] = true);
       setSavedPosts(savedMap);
@@ -152,14 +154,14 @@ export default function Homepage() {
       const hasLiked = userLikedPosts[postID];
 
       if (hasLiked) {
-        await axios.post("http://localhost:8082/api/posts/unlike", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/unlike`, { postID, userID });
       } else {
-        await axios.post("http://localhost:8082/api/posts/like", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/like`, { postID, userID });
       }
 
       const [likesRes, userLikesRes] = await Promise.all([
-        axios.get("http://localhost:8082/api/posts/likes-count"),
-        axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`)
+        axios.get(`${BASE_URL}/api/posts/likes-count`),
+        axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`)
       ]);
 
       setLikes(likesRes.data);
@@ -178,7 +180,7 @@ export default function Homepage() {
       return;
     }
     try {
-      const res = await axios.get(`http://localhost:8082/api/posts/comments/${postID}`);
+      const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
       // console.log(res.data);
       setComments(res.data);
       setShowCommentsPostID(postID);
@@ -191,7 +193,7 @@ export default function Homepage() {
     if (!userID || newComment.trim() === "") return;
 
     try {
-      await axios.post("http://localhost:8082/api/posts/comments", {
+      await axios.post(`${BASE_URL}/api/posts/comments`, {
         postID: showCommentsPostID,
         userID,
         comment: newComment
@@ -200,7 +202,7 @@ export default function Homepage() {
       fetchComments(showCommentsPostID);
 
       // Refresh comment count
-      const res = await axios.get("http://localhost:8082/api/posts/comments-count");
+      const res = await axios.get(`${BASE_URL}/api/posts/comments-count`);
       setCommentCounts(res.data);
 
     } catch (err) {
@@ -238,7 +240,7 @@ export default function Homepage() {
                     {post.images.map((imagePath, index) => (
                       <div className={`carousel-item ${index === 0 ? "active" : ""}`} key={index}>
                         <img
-                          src={`http://localhost:8082${imagePath}`}
+                          src={`${BASE_URL}${imagePath}`}
                           className="d-block w-100"
                           alt="Post"
                           style={{ height: "200px", objectFit: "cover" }}
