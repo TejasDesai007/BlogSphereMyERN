@@ -1,373 +1,183 @@
-const express = require("express");
-const db = require('../config/db');
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const express = require('express');
+const { v2: cloudinary } = require('cloudinary');
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+const Post = require('../models/Post');
+const Like = require('../models/Like');
+const Comment = require('../models/Comment');
+const SavedPost = require('../models/SavedPost');
 
 const router = express.Router();
 
-// Set up uploads folder
-const uploadDir = "uploads";
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir);
-}
+// ✅ Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET
+});
 
-// Configure multer storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, "uploads/");
-    },
-    filename: (req, file, cb) => {
-        const timestamp = Date.now();
-        const ext = path.extname(file.originalname);
-        cb(null, `${timestamp}${ext}`);
-    }
+// ✅ Multer + Cloudinary Storage Setup
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'posts',
+    allowed_formats: ['jpg', 'jpeg', 'png'],
+    transformation: [{ width: 800, height: 600, crop: 'limit' }]
+  }
 });
 const upload = multer({ storage });
 
-// POST /AddPost
-router.post("/AddPost", (req, res) => {
-    const { title, content, userId } = req.body;
+// ➕ Add Post
+router.post('/AddPost', async (req, res) => {
+  const { title, content, userId } = req.body;
+  if (!title || !content || !userId) return res.status(400).json({ message: 'Missing fields' });
 
-    if (!title || !content || !userId) {
-        return res.status(400).json({ message: "Please fill in all fields" });
-    }
-
-    const query = "INSERT INTO Posts (Title, Content, UserID, PublishedAt, IsPublished) VALUES (?, ?, ?, NOW(), 1)";
-    db.query(query, [title, content, userId], (err, result) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Database error!" });
-        } else {
-            const postId = result.insertId;
-            return res.status(200).json({ message: "Successfully posted!", postId });
-        }
-    });
+  try {
+    const post = await Post.create({ title, content, user: userId });
+    res.json({ message: 'Successfully posted!', postId: post._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'DB error' });
+  }
 });
 
-// POST /upload
-router.post("/upload", upload.array("images", 5), async (req, res) => {
-    const { postId } = req.body;
+// 🖼️ Upload Images to Cloudinary
+router.post('/upload', upload.array('images', 5), async (req, res) => {
+  const { postId } = req.body;
+  if (!postId || !req.files?.length) return res.status(400).json({ message: 'Missing post or images' });
 
-    if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: "No images uploaded" });
-    }
-
-    if (!postId) {
-        return res.status(400).json({ error: "postId is required" });
-    }
-
-    try {
-        const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
-
-        for (const imagePath of imageUrls) {
-            await db.promise().query("INSERT INTO PostImages (PostID, ImagePath) VALUES (?, ?)", [postId, imagePath]);
-        }
-
-        return res.status(200).json({ message: "Images uploaded", imageUrls });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Failed to save images" });
-    }
-
+  try {
+    const imageUrls = req.files.map(file => file.path); // file.path = Cloudinary URL
+    await Post.findByIdAndUpdate(postId, { $push: { images: { $each: imageUrls } } });
+    res.json({ message: 'Images uploaded', imageUrls });
+  } catch (err) {
+    console.error('Error uploading images:', err);
+    res.status(500).json({ message: 'Failed to upload images' });
+  }
 });
 
-// server.js or routes/post.js
-router.get("/FetchPost", (req, res) => {
-    const query = `
-       SELECT 
-    p.PostID, p.Title, p.Content, p.PublishedAt, p.UserID, u.UserName,
-    pi.ImagePath
-    FROM Posts p
-    JOIN Users u ON p.UserID = u.UserID
-    LEFT JOIN PostImages pi ON p.PostID = pi.PostID
-    ORDER BY p.PostID DESC
-    `;
-
-    db.query(query, (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Database error!" });
-        }
-
-        // Group posts with multiple images
-        const posts = {};
-        results.forEach(row => {
-            const postID = row.PostID;
-            if (!posts[postID]) {
-                posts[postID] = {
-                    postID,
-                    title: row.Title,
-                    userId: row.UserID,
-                    content: row.Content,
-                    publishedAt: row.PublishedAt,
-                    userName: row.UserName,
-                    images: []
-                };
-            }
-
-            if (row.ImagePath) {
-                posts[postID].images.push(row.ImagePath);
-            }
-        });
-
-        res.status(200).json(Object.values(posts));
-    });
+// 📄 Get All Posts
+router.get('/FetchPost', async (req, res) => {
+  try {
+    const posts = await Post.find()
+      .populate('user', 'username')
+      .sort({ publishedAt: -1 })
+      .lean();
+    res.json(posts);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch posts' });
+  }
 });
 
-router.get("/FetchPost/:postID", (req, res) => {
-    const query = `SELECT 
-    p.PostID, p.Title, p.Content, p.PublishedAt, p.UserID, u.UserName,
-    pi.ImagePath
-    FROM Posts p
-    JOIN Users u ON p.UserID = u.UserID
-    LEFT JOIN PostImages pi ON p.PostID = pi.PostID
-    WHERE p.PostID = ?
-    ORDER BY p.PostID DESC`;
-
-    db.query(query, [req.params.postID], (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Database error!" });
-        }
-        const post = {};
-        results.forEach(row => {
-            const postID = row.PostID;
-            if (!post[postID]) {
-                post[postID] = {
-                    postID,
-                    title: row.Title,
-                    userId: row.UserID,
-                    content: row.Content,
-                    publishedAt: row.PublishedAt,
-                    userName: row.UserName,
-                    images: []
-                };
-            }
-
-            if (row.ImagePath) {
-                post[postID].images.push(row.ImagePath);
-            }
-        });
-        res.status(200).json(Object.values(posts));
-    });
+// 📍 Get Single Post
+router.get('/FetchPost/:postID', async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postID)
+      .populate('user', 'username email')
+      .lean();
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    res.json(post);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching post' });
+  }
 });
 
-// POST /api/posts/like
-router.post("/like", async (req, res) => {
-    const { postID, userID } = req.body;
-
-    try {
-        // Avoid duplicate likes
-        await db.promise().query("INSERT IGNORE INTO Likes (PostID, UserID) VALUES (?, ?)", [postID, userID]);
-        res.sendStatus(200);
-    } catch (err) {
-        console.error("Error adding like:", err);
-        res.sendStatus(500);
-    }
-});
-router.post("/unlike", async (req, res) => {
-    const { postID, userID } = req.body;
-
-    try {
-        await db.promise().query("DELETE FROM Likes WHERE PostID = ? AND UserID = ?", [postID, userID]);
-        res.sendStatus(200);
-    } catch (err) {
-        console.error("Error removing like:", err);
-        res.sendStatus(500);
-    }
-});
-router.get("/user-liked/:userID", async (req, res) => {
-    const userID = req.params.userID;
-
-    try {
-        const [rows] = await db.promise().query("SELECT PostID FROM Likes WHERE UserID = ?", [userID]);
-        const likedPostIDs = rows.map(row => row.PostID);
-        res.json(likedPostIDs);
-    } catch (err) {
-        console.error("Error fetching user's liked posts:", err);
-        res.sendStatus(500);
-    }
+// 👍 Like / 👎 Unlike
+router.post('/like', async (req, res) => {
+  const { postID, userID } = req.body;
+  try {
+    await Like.create({ post: postID, user: userID });
+    res.sendStatus(200);
+  } catch (err) {
+    if (err.code === 11000) return res.status(200).json({ message: 'Already liked' });
+    console.error(err);
+    res.sendStatus(500);
+  }
 });
 
-
-// GET /api/posts/likes-count
-router.get("/likes-count", async (req, res) => {
-    const [rows] = await db.promise().query("SELECT PostID, COUNT(*) AS count FROM Likes GROUP BY PostID");
-    const likeMap = {};
-    rows.forEach(row => {
-        likeMap[row.PostID] = row.count;
-    });
-    // console.log("hitted");
-    res.json(likeMap);
+router.post('/unlike', async (req, res) => {
+  await Like.deleteOne({ post: req.body.postID, user: req.body.userID });
+  res.sendStatus(200);
 });
 
-router.get("/user/:userId", async (req, res) => {
-    const { userId } = req.params;
-    const query = `SELECT * FROM posts WHERE UserID = ? ORDER BY PublishedAt DESC`;
-
-    try {
-        const [rows] = await db.promise().query(query, [userId]);
-        res.json(rows);
-    } catch (error) {
-        console.error("Error fetching user posts:", error);
-        res.status(500).json({ message: "Server error while fetching posts" });
-    }
+router.get('/user-liked/:userID', async (req, res) => {
+  const likes = await Like.find({ user: req.params.userID }).select('post -_id');
+  res.json(likes.map(l => l.post));
 });
 
-
-router.delete("/DeletePost/:postID", async (req, res) => {
-    const postID = req.params.postID;
-
-    try {
-
-        const [images] = await db.promise().query("SELECT ImagePath FROM postImages WHERE postID = ?", [postID]);
-
-
-        images.forEach(img => {
-            const imgPath = path.join(__dirname, "../uploads", img.ImagePath);
-            if (fs.existsSync(imgPath)) {
-                fs.unlink(imgPath, err => {
-                    if (err) console.error("Error deleting image file:", err);
-                });
-            }
-        });
-
-
-        await db.promise().query("DELETE FROM postImages WHERE postID = ?", [postID]);
-
-
-        await db.promise().query("DELETE FROM posts WHERE postID = ?", [postID]);
-
-        res.status(200).json({ message: "Post and its images deleted successfully." });
-    } catch (err) {
-        console.error("Error deleting post:", err);
-        res.status(500).json({ message: "Server error while deleting the post." });
-    }
+router.get('/likes-count', async (req, res) => {
+  const agg = await Like.aggregate([
+    { $group: { _id: '$post', count: { $sum: 1 } } }
+  ]);
+  const result = {};
+  agg.forEach(a => result[a._id] = a.count);
+  res.json(result);
 });
 
-router.get("/comments/:postID", async (req, res) => {
-    const postID = req.params.postID;
-
-    try {
-        const [rows] = await db.promise().query(
-            "SELECT c.*, u.username FROM Comments c JOIN Users u ON c.userID = u.userID WHERE c.postID = ? ORDER BY c.CreatedAt DESC",
-            [postID]
-        );
-
-
-
-        res.json(rows);
-    } catch (err) {
-        console.error("Error fetching comments:", err);
-        res.status(500).json({ error: "Failed to fetch comments" });
-    }
+// 💬 Comments
+router.get('/comments/:postID', async (req, res) => {
+  const comments = await Comment.find({ post: req.params.postID })
+    .populate('user', 'username')
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json(comments);
 });
 
-
-router.get("/comments-count", async (req, res) => {
-    try {
-        const [rows] = await db.promise().query(`
-        SELECT postID, COUNT(*) AS count FROM Comments GROUP BY postID
-      `);
-        // console.log(rows);
-        const counts = {};
-        rows.forEach(row => {
-            counts[row.postID] = row.count;
-        });
-
-        res.json(counts);
-    } catch (err) {
-        console.error("Error fetching comment counts:", err);
-        res.status(500).json({ error: "Failed to fetch comment counts" });
-    }
+router.get('/comments-count', async (req, res) => {
+  const agg = await Comment.aggregate([
+    { $group: { _id: '$post', count: { $sum: 1 } } }
+  ]);
+  const result = {}; agg.forEach(a => result[a._id] = a.count);
+  res.json(result);
 });
 
+router.post('/comments', async (req, res) => {
+  const { postID, userID, comment } = req.body;
+  if (!postID || !userID || !comment?.trim()) return res.status(400).json({ message: 'Missing fields' });
+  const c = await Comment.create({ post: postID, user: userID, content: comment });
+  res.json({ message: 'Comment added', commentId: c._id });
+});
 
-router.post("/comments", async (req, res) => {
-    const { postID, userID, comment } = req.body;
+// 🔖 Save / Unsave
+router.post('/savepost', async (req, res) => {
+  try {
+    await SavedPost.create({ post: req.body.postID, user: req.body.userID });
+    res.json({ message: 'Post saved' });
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ message: 'Already saved' });
+    console.error(err);
+    res.status(500).json({ message: 'Error saving post' });
+  }
+});
 
-    if (!postID || !userID || !comment || comment.trim() === "") {
-        return res.status(400).json({ error: "Missing required fields" });
+router.post('/unsave-post', async (req, res) => {
+  await SavedPost.deleteOne({ post: req.body.postID, user: req.body.userID });
+  res.json({ message: 'Post unsaved' });
+});
+
+router.get('/user-saved/:userID', async (req, res) => {
+  const saved = await SavedPost.find({ user: req.params.userID }).select('post -_id');
+  res.json(saved.map(s => s.post));
+});
+
+// 🗑️ Delete Post + Cloudinary Images
+router.delete('/DeletePost/:postID', async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postID);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    for (const url of post.images) {
+      const publicId = url.split('/').pop().split('.')[0]; // crude extraction
+      await cloudinary.uploader.destroy(`posts/${publicId}`, { invalidate: true });
     }
 
-    try {
-        await db.promise().query(
-            "INSERT INTO Comments (PostID, UserID, Content, CreatedAt) VALUES (?, ?, ?, NOW())",
-            [postID, userID, comment]
-        );
-
-        res.json({ message: "Comment added successfully" });
-    } catch (err) {
-        console.error("Error posting comment:", err);
-        res.status(500).json({ error: "Failed to post comment" });
-    }
+    await post.deleteOne();
+    res.json({ message: 'Post and images deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting post:', err);
+    res.status(500).json({ message: 'Error deleting post' });
+  }
 });
-
-
-router.get("/user-saved/:userID", async (req, res) => {
-    const { userID } = req.params;
-    try {
-        const [rows] = await db.promise().query(`
-        SELECT sp.PostID, p.Title, p.Content, p.PublishedAt, p.UserID, u.UserName
-        FROM SavedPost sp
-        JOIN Posts p ON sp.PostID = p.PostID
-        JOIN Users u ON p.UserID = u.UserID
-        WHERE sp.UserID = ?`, [userID]);
-        // console.log(rows);
-        res.json(rows);
-    } catch (err) {
-        console.error("Error fetching saved posts:", err);
-        res.status(500).json({ error: "Failed to fetch saved posts" });
-    }
-});
-
-router.post("/unsave-post", async (req, res) => {
-    const { postID, userID } = req.body;
-    try {
-        await db.promise().query("DELETE FROM SavedPost WHERE PostID = ? AND UserID = ?", [postID, userID]);
-        res.json({ message: "Post unsaved!" });
-    } catch (err) {
-        console.error("Error unsaving post:", err);
-        res.status(500).json({ error: "Failed to unsave post" });
-    }
-});
-
-router.post("/savepost", async (req, res) => {
-    const { postID, userID } = req.body;
-
-    if (!postID || !userID) {
-        return res.status(400).json({ message: "Missing postID or userID" });
-    }
-
-    try {
-        const query = "INSERT INTO SavedPost (PostID, UserID) VALUES (?, ?)";
-        await db.promise().query(query, [postID, userID]);
-
-        res.status(200).json({ message: "Post saved successfully" });
-    } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ message: "Already saved" });
-        }
-        console.error("Error saving post:", error);
-        res.status(500).json({ message: "Error saving post" });
-    }
-});
-
-
-
-
-router.get("/savedposts/:userID", async (req, res) => {
-    const { userID } = req.params;
-    try {
-        const [rows] = await db.promise().query("SELECT PostID FROM SavedPost WHERE UserID = ?", [userID]);
-        const savedMap = rows.map(row => row.PostID);
-        res.json(savedMap);
-    } catch (err) {
-        console.error("Error fetching saved post IDs:", err);
-        res.status(500).json({ error: "Failed to fetch saved post IDs" });
-    }
-});
-
 
 module.exports = router;

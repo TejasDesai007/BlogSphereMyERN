@@ -4,13 +4,16 @@ const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const xss = require("xss-clean");
 const path = require("path");
+const dotenv = require("dotenv");
+
+dotenv.config(); // Load .env variables
 
 const userRoutes = require("./routes/userRoutes");
 const postRoutes = require("./routes/postRoutes");
 const followRoutes = require("./routes/followRoutes");
-const app = express();
 
 const db = require("./config/db");
+const app = express();
 
 
 // Middleware
@@ -31,10 +34,14 @@ app.use(cookieParser());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(session({
-    secret: "your_secret_key", // Change to a secure key
-    resave: false,
-    saveUninitialized: false,
-    cookie: { httpOnly: true, secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  secret: process.env.SESSION_SECRET || "default_secret_key",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 24 * 60 * 60 * 1000
+  }
 }));
 
 db();
@@ -47,7 +54,7 @@ app.get("/", (req, res) => {
     return res.json("API is running...");
 });
 
-const PORT = 8082;
+const PORT = process.env.PORT || 8082;
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
