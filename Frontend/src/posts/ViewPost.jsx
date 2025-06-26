@@ -27,7 +27,7 @@ export default function ViewPost() {
     const fetchSavedPosts = async () => {
       if (!userID) return;
       try {
-        const res = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+        const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
         const savedMap = {};
         res.data.forEach(id => savedMap[id] = true);
         setSavedPosts(savedMap);
@@ -43,7 +43,7 @@ export default function ViewPost() {
   useEffect(() => {
     const fetchPost = async () => {
       try {
-        const res = await axios.get(`http://localhost:8082/api/posts/FetchPost?postID=${postID}`);
+        const res = await axios.get(`${BASE_URL}/api/posts/FetchPost?postID=${postID}`);
         const matchedPost = res.data.find(p => p.postID === parseInt(postID));
         setPost(matchedPost || null);
       } catch (err) {
@@ -56,9 +56,9 @@ export default function ViewPost() {
     const fetchLikeAndCommentData = async () => {
       try {
         const [likeRes, userLikeRes, commentRes] = await Promise.all([
-          axios.get(`http://localhost:8082/api/posts/likes-count`),
-          axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`),
-          axios.get(`http://localhost:8082/api/posts/comments/${postID}`)
+          axios.get(`${BASE_URL}/api/posts/likes-count`),
+          axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`),
+          axios.get(`${BASE_URL}/api/posts/comments/${postID}`)
         ]);
 
         setLikes(likeRes.data[postID] || 0);
@@ -88,14 +88,14 @@ export default function ViewPost() {
 
     try {
       if (hasLiked) {
-        await axios.post("http://localhost:8082/api/posts/unlike", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/unlike`, { postID, userID });
       } else {
-        await axios.post("http://localhost:8082/api/posts/like", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/like`, { postID, userID });
       }
 
       const [likeRes, userLikeRes] = await Promise.all([
-        axios.get(`http://localhost:8082/api/posts/likes-count`),
-        axios.get(`http://localhost:8082/api/posts/user-liked/${userID}`)
+        axios.get(`${BASE_URL}/api/posts/likes-count`),
+        axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`)
       ]);
 
       setLikes(likeRes.data[postID] || 0);
@@ -114,12 +114,12 @@ export default function ViewPost() {
       const hasSaved = savedPosts[postID];
 
       if (hasSaved) {
-        await axios.post("http://localhost:8082/api/posts/unsave-post", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/unsave-post`, { postID, userID });
       } else {
-        await axios.post("http://localhost:8082/api/posts/savepost", { postID, userID });
+        await axios.post(`${BASE_URL}/api/posts/savepost`, { postID, userID });
       }
 
-      const res = await axios.get(`http://localhost:8082/api/posts/savedposts/${userID}`);
+      const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
       const savedMap = {};
       res.data.forEach(postID => savedMap[postID] = true);
       setSavedPosts(savedMap);
@@ -132,13 +132,13 @@ export default function ViewPost() {
     if (!userID || newComment.trim() === "") return;
 
     try {
-      await axios.post("http://localhost:8082/api/posts/comments", {
+      await axios.post(`${BASE_URL}/api/posts/comments`, {
         postID,
         userID,
         comment: newComment
       });
 
-      const res = await axios.get(`http://localhost:8082/api/posts/comments/${postID}`);
+      const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
       setComments(res.data);
       setNewComment("");
     } catch (err) {
@@ -177,11 +177,11 @@ export default function ViewPost() {
                   {post.images.map((imagePath, index) => (
                     <div key={index} className={`carousel-item ${index === 0 ? "active" : ""}`}>
                       <img
-                        src={`http://localhost:8082${imagePath}`}
+                        src={`${BASE_URL}${imagePath}`}
                         className="d-block w-100"
                         style={{ maxHeight: "400px", objectFit: "cover", cursor: "pointer" }}
                         alt="Post"
-                        onClick={() => setSelectedImage(`http://localhost:8082${imagePath}`)}
+                        onClick={() => setSelectedImage(`${BASE_URL}${imagePath}`)}
                       />
 
                     </div>

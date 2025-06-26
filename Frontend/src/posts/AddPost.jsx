@@ -40,7 +40,7 @@ const AddPost = () => {
             setError("");
 
             // Step 1: Create Post without images
-            const postRes = await fetch("http://localhost:8082/api/posts/AddPost", {
+            const postRes = await fetch(`${BASE_URL}/api/posts/AddPost`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -63,7 +63,7 @@ const AddPost = () => {
                 images.forEach((img) => formData.append("images", img));
                 formData.append("postId", postId); // send as form field
 
-                const imgRes = await fetch("http://localhost:8082/api/posts/upload", {
+                const imgRes = await fetch(`${BASE_URL}/api/posts/upload`, {
                     method: "POST",
                     body: formData,
                 });

@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 
 const Logout = () => {
     const navigate = useNavigate();
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     useEffect(() => {
         const logoutUser = async () => {
             try {
-                const response = await fetch("http://localhost:8082/api/users/logout", {
+                const response = await fetch(`${BASE_URL}/api/users/logout`, {
                     method: "POST",
                     credentials: "include", // Important for session cookies
                 });

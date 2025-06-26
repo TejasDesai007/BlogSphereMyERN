@@ -20,6 +20,7 @@ const Profile = () => {
     const [followedUsers, setFollowedUsers] = useState([]);
     const [showFollows, setShowFollows] = useState(false);
     const [followLoading, setFollowLoading] = useState(false);
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     useEffect(() => {
         if (!storedUser) {
@@ -27,7 +28,7 @@ const Profile = () => {
             return;
         }
 
-        axios.get(`http://localhost:8082/api/users/profile/${storedUser.id}`)
+        axios.get(`${BASE_URL}/api/users/profile/${storedUser.id}`)
             .then(res => {
                 setUser(res.data);
                 setLoading(false);
@@ -44,7 +45,7 @@ const Profile = () => {
         if (!confirmDelete) return;
 
         try {
-            await axios.delete(`http://localhost:8082/api/posts/DeletePost/${postID}`);
+            await axios.delete(`${BASE_URL}/api/posts/DeletePost/${postID}`);
             setPosts(prevPosts => prevPosts.filter(p => p.PostID !== postID));
         } catch (err) {
             console.error("Error deleting post:", err);
@@ -62,7 +63,7 @@ const Profile = () => {
         setFollowLoading(true);
 
         try {
-            const res = await axios.get(`http://localhost:8082/api/follows/getList/${storedUser.id}`);
+            const res = await axios.get(`${BASE_URL}/api/follows/getList/${storedUser.id}`);
             setFollowedUsers(res.data);
             setShowFollows(true);
         } catch (err) {
@@ -82,7 +83,7 @@ const Profile = () => {
         setShowPosts(false);
         setSavedPostsLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8082/api/posts/user-saved/${storedUser.id}`);
+            const res = await axios.get(`${BASE_URL}/api/posts/user-saved/${storedUser.id}`);
             setSavedPosts(res.data);
             setShowSavedPosts(true);
         } catch (err) {
@@ -102,7 +103,7 @@ const Profile = () => {
         setShowSavedPosts(false);
         setPostsLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8082/api/posts/user/${storedUser.id}`);
+            const res = await axios.get(`${BASE_URL}/api/posts/user/${storedUser.id}`);
             setPosts(res.data);
             setShowPosts(true);
         } catch (err) {

@@ -16,6 +16,7 @@ const OtherProfile = () => {
     const [followingList, setFollowingList] = useState([]);
     const [showFollowingModal, setShowFollowingModal] = useState(false);
     const [followingLoading, setFollowingLoading] = useState(false);
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     const navigate = useNavigate();
     const { userID } = useParams();
@@ -34,7 +35,7 @@ const OtherProfile = () => {
         }
 
         // Fetch profile data
-        axios.get(`http://localhost:8082/api/users/profile/${userID}`)
+        axios.get(`${BASE_URL}/api/users/profile/${userID}`)
             .then(res => {
                 setUser(res.data);
                 setLoading(false);
@@ -46,7 +47,7 @@ const OtherProfile = () => {
             });
 
         // Check follow status
-        axios.get(`http://localhost:8082/api/follows/check`, {
+        axios.get(`${BASE_URL}/api/follows/check`, {
             params: { followerId: sessionuserID, followedId: userID }
         })
             .then(res => {
@@ -61,7 +62,7 @@ const OtherProfile = () => {
     const fetchFollowingList = async () => {
         setFollowingLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8082/api/follows/getList/${userID}`);
+            const res = await axios.get(`${BASE_URL}/api/follows/getList/${userID}`);
             setFollowingList(res.data);
             setShowFollowingModal(true);
         } catch (err) {
@@ -78,7 +79,7 @@ const OtherProfile = () => {
 
         setPostsLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8082/api/posts/user/${userID}`);
+            const res = await axios.get(`${BASE_URL}/api/posts/user/${userID}`);
             setPosts(res.data);
             setShowPosts(true);
         } catch (err) {
@@ -91,12 +92,12 @@ const OtherProfile = () => {
         setFollowLoading(true);
         try {
             if (!isFollowing) {
-                await axios.post(`http://localhost:8082/api/follows`, {
+                await axios.post(`${BASE_URL}/api/follows`, {
                     followerId: sessionuserID,
                     followedId: userID
                 });
             } else {
-                await axios.delete(`http://localhost:8082/api/follows`, {
+                await axios.delete(`${BASE_URL}/api/follows`, {
                     data: {
                         followerId: sessionuserID,
                         followedId: userID

@@ -16,7 +16,8 @@ const Registration = () => {
 
     const [errors, setErrors] = useState({});
     const [usernameMsg, setUsernameMsg] = useState(""); // For username availability message
-
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    
     // Handle input change
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -70,12 +71,12 @@ const Registration = () => {
         if (Object.keys(errors).length === 0) {
             if (window.confirm("Are you sure you want to register?")) {
                 try {
-                    const response = await fetch("http://localhost:8082/api/users/register", {
+                    const response = await fetch(`${BASE_URL}/api/users/register`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(formData),
                     });
-                    
+
 
                     const data = await response.json(); // Read JSON response from server
 
