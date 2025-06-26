@@ -10,6 +10,8 @@ const postRoutes = require("./routes/postRoutes");
 const followRoutes = require("./routes/followRoutes");
 const app = express();
 
+const db = require("./config/db");
+
 
 // Middleware
 app.use(cors({
@@ -35,6 +37,7 @@ app.use(session({
     cookie: { httpOnly: true, secure: false, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
+db();
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
