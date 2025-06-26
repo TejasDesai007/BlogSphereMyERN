@@ -22,7 +22,7 @@ export default function ViewPost() {
   const user = JSON.parse(sessionStorage.getItem("user"));
   const userID = user ? user.id : null;
   const [savedPosts, setSavedPosts] = useState({});
-
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL;
   useEffect(() => {
     const fetchSavedPosts = async () => {
       if (!userID) return;

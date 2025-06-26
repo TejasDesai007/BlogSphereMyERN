@@ -16,6 +16,8 @@ const AddPost = () => {
     const [previews, setPreviews] = useState([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    
     useEffect(() => {
         const user = sessionStorage.getItem("user");
         if (!user) {
