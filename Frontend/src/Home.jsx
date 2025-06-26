@@ -32,9 +32,9 @@ export default function Homepage() {
     const fetchAll = async () => {
       try {
         const [postsRes, likesRes, commentsCountRes] = await Promise.all([
-          axios.get(`https://tejasblogsbackend-com.onrender.com/api/posts/FetchPost`),
-          axios.get(`https://tejasblogsbackend-com.onrender.com/api/posts/likes-count`),
-          axios.get(`https://tejasblogsbackend-com.onrender.com/api/posts/comments-count`),
+          axios.get(`${BASE_URL}/api/posts/FetchPost`),
+          axios.get(`${BASE_URL}/api/posts/likes-count`),
+          axios.get(`${BASE_URL}/api/posts/comments-count`),
         ]);
 
         setPosts(postsRes.data);
