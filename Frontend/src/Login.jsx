@@ -20,7 +20,7 @@ const Login = () => {
         setErrors({}); // Reset errors before a new request
 
         try {
-            const response = await fetch("http://localhost:8082/api/users/login", {
+            const response = await fetch("https://tejasblogsbackend-com.onrender.com/api/users/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(credentials),
