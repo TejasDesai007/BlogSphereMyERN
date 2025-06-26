@@ -18,14 +18,20 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  credentials: true,
-  origin: [
-    "http://localhost:5173", 
-    "https://blogsphered.onrender.com"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://blogsphered.onrender.com'
+    ];
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -51,7 +57,7 @@ app.use("/api/posts", postRoutes);
 app.use("/api/follows", followRoutes);
 
 app.get("/", (req, res) => {
-    return res.json("API is running...");
+  return res.json("API is running...");
 });
 
 const PORT = process.env.PORT || 8082;
