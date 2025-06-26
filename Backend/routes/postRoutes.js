@@ -32,9 +32,10 @@ const upload = multer({ storage });
 router.post('/AddPost', async (req, res) => {
   const { title, content, userId } = req.body;
   if (!title || !content || !userId) return res.status(400).json({ message: 'Missing fields' });
-
+   
   try {
     const post = await Post.create({ title, content, user: userId });
+    
     res.json({ message: 'Successfully posted!', postId: post._id });
   } catch (err) {
     console.error(err);

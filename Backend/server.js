@@ -17,21 +17,30 @@ const app = express();
 
 
 // Middleware
+// Update your corsOptions in backend
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       'http://localhost:5173',
-      'https://blogsphered.onrender.com'
+      'http://localhost:3000',
+      'https://blogsphered.onrender.com',  // Your frontend URL
+      'https://tejasblogsbackend-com.onrender.com' // Your backend URL (for testing)
     ];
-    if (!origin || allowedOrigins.includes(origin)) {
+    
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log(`CORS blocked origin: ${origin}`);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  optionsSuccessStatus: 200 // For legacy browser support
 };
 
 app.use(cors(corsOptions));

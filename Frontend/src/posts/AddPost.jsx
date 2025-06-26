@@ -17,7 +17,7 @@ const AddPost = () => {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-    
+
     useEffect(() => {
         const user = sessionStorage.getItem("user");
         if (!user) {
@@ -31,15 +31,18 @@ const AddPost = () => {
         setPreviews(files.map(file => URL.createObjectURL(file)));
     };
 
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
         setLoading(true);
 
         try {
-            setLoading(true);
-            setError("");
+            // Debug logs
+            console.log("BASE_URL:", BASE_URL);
+            console.log("Full API URL:", `${BASE_URL}/api/posts/AddPost`);
+
+            const user = JSON.parse(sessionStorage.getItem("user"));
+            console.log("User from sessionStorage:", user);
 
             // Step 1: Create Post without images
             const postRes = await fetch(`${BASE_URL}/api/posts/AddPost`, {
@@ -51,37 +54,78 @@ const AddPost = () => {
                 body: JSON.stringify({
                     title,
                     content,
-                    userId: JSON.parse(sessionStorage.getItem("user")).id,
+                    userId: user.id,
                 }),
             });
 
-            const postData = await postRes.json();
-            if (!postRes.ok) throw new Error(postData.message || "Failed to create post.");
-            const postId = postData.postId; // returned from backend
-            console.log(postId);
+            console.log("Response status:", postRes.status);
+            console.log("Response ok:", postRes.ok);
+
+            // Check if response is JSON
+            const contentType = postRes.headers.get("content-type");
+            console.log("Content-Type:", contentType);
+
+            let postData;
+            if (contentType && contentType.includes("application/json")) {
+                postData = await postRes.json();
+            } else {
+                const textResponse = await postRes.text();
+                console.log("Non-JSON response received:", textResponse);
+                throw new Error(`Server returned non-JSON response: ${textResponse.substring(0, 100)}...`);
+            }
+
+            console.log("Post response data:", postData);
+
+            if (!postRes.ok) {
+                throw new Error(postData.message || "Failed to create post.");
+            }
+
+            const postId = postData.postId;
+            console.log("Created post ID:", postId);
+
             // Step 2: Upload images for that Post
             if (images.length > 0) {
+                console.log("Uploading images for post:", postId);
+
                 const formData = new FormData();
                 images.forEach((img) => formData.append("images", img));
-                formData.append("postId", postId); // send as form field
+                formData.append("postId", postId);
 
                 const imgRes = await fetch(`${BASE_URL}/api/posts/upload`, {
                     method: "POST",
+                    credentials: "include", // Add this
                     body: formData,
                 });
 
-                const imgData = await imgRes.json();
-                if (!imgRes.ok) throw new Error(imgData.error || "Image upload failed!");
+                console.log("Image upload response status:", imgRes.status);
+
+                const imgContentType = imgRes.headers.get("content-type");
+                let imgData;
+
+                if (imgContentType && imgContentType.includes("application/json")) {
+                    imgData = await imgRes.json();
+                } else {
+                    const imgTextResponse = await imgRes.text();
+                    console.log("Image upload non-JSON response:", imgTextResponse);
+                    throw new Error(`Image upload failed: ${imgTextResponse.substring(0, 100)}...`);
+                }
+
+                console.log("Image upload response data:", imgData);
+
+                if (!imgRes.ok) {
+                    throw new Error(imgData.error || imgData.message || "Image upload failed!");
+                }
             }
 
-
+            console.log("Post created successfully, navigating to home");
             navigate("/");
+
         } catch (err) {
-            setError(err.message);
+            console.error("Submit error details:", err);
+            setError(err.message || "An unexpected error occurred");
         } finally {
             setLoading(false);
         }
-
     };
 
     return (
