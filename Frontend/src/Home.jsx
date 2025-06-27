@@ -19,11 +19,6 @@ export default function Homepage() {
   const [followMap, setFollowMap] = useState({});
   const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-
-
-  const [isFollowing, setIsFollowing] = useState(false);
-
-
   const navigate = useNavigate();
   const user = JSON.parse(sessionStorage.getItem("user"));
   const userID = user ? user.id : null;
@@ -38,10 +33,8 @@ export default function Homepage() {
         ]);
 
         setPosts(postsRes.data);
-        // console.log(postsRes.data);
         setLikes(likesRes.data);
         setCommentCounts(commentsCountRes.data);
-
 
         if (userID) {
           const userLikesRes = await axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`);
@@ -52,7 +45,6 @@ export default function Homepage() {
           const userSavedRes = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
           const savedMap = {};
           userSavedRes.data.forEach(postID => savedMap[postID] = true);
-          // console.log(savedMap);
           setSavedPosts(savedMap);
 
           const followStatuses = {};
@@ -68,7 +60,6 @@ export default function Homepage() {
           }
 
           setFollowMap(followStatuses);
-
         }
 
       } catch (err) {
@@ -78,7 +69,6 @@ export default function Homepage() {
 
     fetchAll();
   }, []);
-
 
   const handleFollow = async (followedId) => {
     try {
@@ -106,8 +96,6 @@ export default function Homepage() {
     }
   };
 
-
-
   const handleSave = async (postID) => {
     if (!userID) {
       navigate('/login');
@@ -117,7 +105,6 @@ export default function Homepage() {
     try {
       const hasSaved = savedPosts[postID];
 
-      // Optimistically update UI
       setSavedPosts(prev => ({
         ...prev,
         [postID]: !hasSaved
@@ -129,9 +116,6 @@ export default function Homepage() {
         await axios.post(`${BASE_URL}/api/posts/savepost`, { postID, userID });
       }
 
-      // You can skip this re-fetch to prevent toggling flicker
-      // Or keep it if backend is the true source of truth
-
       const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
       const savedMap = {};
       res.data.forEach(postID => savedMap[postID] = true);
@@ -141,8 +125,6 @@ export default function Homepage() {
       console.error("Error saving/unsaving post:", err);
     }
   };
-
-
 
   const handleLike = async (postID) => {
     if (!userID) {
@@ -181,7 +163,6 @@ export default function Homepage() {
     }
     try {
       const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
-      // console.log(res.data);
       setComments(res.data);
       setShowCommentsPostID(postID);
     } catch (err) {
@@ -201,7 +182,6 @@ export default function Homepage() {
       setNewComment("");
       fetchComments(showCommentsPostID);
 
-      // Refresh comment count
       const res = await axios.get(`${BASE_URL}/api/posts/comments-count`);
       setCommentCounts(res.data);
 
@@ -228,14 +208,10 @@ export default function Homepage() {
 
       <div className="row">
         {filteredPosts.map((post) => (
-          <div className="col-lg-4 col-md-6 mb-4" key={post.postID}>
+          <div className="col-lg-4 col-md-6 mb-4" key={post._id}>
             <div className="card h-100">
               {post.images.length > 0 && (
-                <div
-                  id={`carousel${post.postID}`}
-                  className="carousel slide"
-                  data-bs-ride="carousel"
-                >
+                <div id={`carousel${post._id}`} className="carousel slide" data-bs-ride="carousel">
                   <div className="carousel-inner">
                     {post.images.map((imagePath, index) => (
                       <div className={`carousel-item ${index === 0 ? "active" : ""}`} key={index}>
@@ -245,19 +221,16 @@ export default function Homepage() {
                           alt="Post"
                           style={{ height: "200px", objectFit: "cover" }}
                         />
-
                       </div>
                     ))}
                   </div>
                   {post.images.length > 1 && (
                     <>
-                      <button className="carousel-control-prev" type="button" data-bs-target={`#carousel${post.postID}`} data-bs-slide="prev">
+                      <button className="carousel-control-prev" type="button" data-bs-target={`#carousel${post._id}`} data-bs-slide="prev">
                         <span className="carousel-control-prev-icon"></span>
-                        <span className="visually-hidden">Previous</span>
                       </button>
-                      <button className="carousel-control-next" type="button" data-bs-target={`#carousel${post.postID}`} data-bs-slide="next">
+                      <button className="carousel-control-next" type="button" data-bs-target={`#carousel${post._id}`} data-bs-slide="next">
                         <span className="carousel-control-next-icon"></span>
-                        <span className="visually-hidden">Next</span>
                       </button>
                     </>
                   )}
@@ -281,24 +254,14 @@ export default function Homepage() {
                       {post.user.username}
                     </Link> on {new Date(post.publishedAt).toLocaleDateString()}
                   </span>
-
-
                   {user && user.id !== post.userId && (
                     <span className="ms-2">
                       {followMap[post.userId] ? (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => handleUnfollow(post.userId)}
-                          title="Unfollow"
-                        >
+                        <button className="btn btn-sm" onClick={() => handleUnfollow(post.userId)}>
                           <i className="fas fa-user-minus"></i>
                         </button>
                       ) : (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => handleFollow(post.userId)}
-                          title="Follow"
-                        >
+                        <button className="btn btn-sm" onClick={() => handleFollow(post.userId)}>
                           <i className="fas fa-user-plus"></i>
                         </button>
                       )}
@@ -309,31 +272,21 @@ export default function Homepage() {
                 <div className="mt-auto d-flex justify-content-between align-items-center">
                   <button
                     className="btn px-3 py-1 text-white border-0"
-                    onClick={() => handleLike(post.postID)}
+                    onClick={() => handleLike(post._id)}
                     style={{
-                      backgroundColor: userLikedPosts[post.postID] ? "#dc3545" : "#f0f0f0",
-                      color: userLikedPosts[post.postID] ? "black" : "#dc3545"
+                      backgroundColor: userLikedPosts[post._id] ? "#dc3545" : "#f0f0f0",
+                      color: userLikedPosts[post._id] ? "black" : "#dc3545"
                     }}
                   >
-                    <i className="fas fa-heart me-1"></i> {likes[post.postID] || 0}
+                    <i className="fas fa-heart me-1"></i> {likes[post._id] || 0}
                   </button>
 
-
-
-                  <button
-                    className="btn btn-sm ms-2"
-                    onClick={() => fetchComments(post.postID)}
-
-                  >
-                    <i className="fas fa-comments me-1"></i> {commentCounts[post.postID] || 0}
+                  <button className="btn btn-sm ms-2" onClick={() => fetchComments(post._id)}>
+                    <i className="fas fa-comments me-1"></i> {commentCounts[post._id] || 0}
                   </button>
 
-                  <button
-                    className="btn px-3 py-1 ms-2"
-                    onClick={() => handleSave(post.postID)}
-
-                  >
-                    <i className={`fa${savedPosts[post.postID] ? "s" : "r"} fa-bookmark`}></i>
+                  <button className="btn px-3 py-1 ms-2" onClick={() => handleSave(post._id)}>
+                    <i className={`fa${savedPosts[post._id] ? "s" : "r"} fa-bookmark`}></i>
                   </button>
 
                   <a
@@ -350,7 +303,6 @@ export default function Homepage() {
                   >
                     <i className="fas fa-eye"></i>
                   </a>
-
                 </div>
               </div>
             </div>
@@ -364,7 +316,6 @@ export default function Homepage() {
         )}
       </div>
 
-      {/* Comment Modal */}
       {showCommentsPostID && (
         <div className="modal fade show" style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}>
           <div className="modal-dialog modal-lg">

@@ -176,7 +176,7 @@ export default function ViewPost() {
                   {post.images.map((imagePath, index) => (
                     <div key={index} className={`carousel-item ${index === 0 ? "active" : ""}`}>
                       <img
-                        src={`${BASE_URL}${imagePath}`}
+                        src={`${imagePath}`}
                         className="d-block w-100"
                         style={{ maxHeight: "400px", objectFit: "cover", cursor: "pointer" }}
                         alt="Post"
