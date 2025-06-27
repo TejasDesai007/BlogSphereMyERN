@@ -269,7 +269,7 @@ export default function Homepage() {
                 <h6 className="card-subtitle mb-2 text-muted d-flex align-items-center justify-content-between">
                   <span>
                     By <Link
-                      to={`/profile/${post.userId}`}
+                      to={`/profile/${post.user._id}`}
                       style={{
                         background: "linear-gradient(to right, #667eea, #764ba2)",
                         color: "white",
@@ -278,7 +278,7 @@ export default function Homepage() {
                         textDecoration: "none"
                       }}
                     >
-                      {post.userName}
+                      {post.user.username}
                     </Link> on {new Date(post.publishedAt).toLocaleDateString()}
                   </span>
 
@@ -337,7 +337,7 @@ export default function Homepage() {
                   </button>
 
                   <a
-                    href={`/ViewPost?postID=${post.postID}`}
+                    href={`/ViewPost?postID=${post._id}`}
                     className="btn btn-sm ms-2"
                     style={{
                       background: "linear-gradient(to right, #36d1dc, #5b86e5)",
