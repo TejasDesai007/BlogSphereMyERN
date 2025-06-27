@@ -240,11 +240,12 @@ export default function Homepage() {
                     {post.images.map((imagePath, index) => (
                       <div className={`carousel-item ${index === 0 ? "active" : ""}`} key={index}>
                         <img
-                          src={`${BASE_URL}${imagePath}`}
+                          src={imagePath}
                           className="d-block w-100"
                           alt="Post"
                           style={{ height: "200px", objectFit: "cover" }}
                         />
+
                       </div>
                     ))}
                   </div>
