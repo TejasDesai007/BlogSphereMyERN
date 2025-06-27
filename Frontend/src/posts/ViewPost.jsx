@@ -43,9 +43,8 @@ export default function ViewPost() {
   useEffect(() => {
     const fetchPost = async () => {
       try {
-        const res = await axios.get(`${BASE_URL}/api/posts/FetchPost?postID=${postID}`);
-        const matchedPost = res.data.find(p => p.postID === parseInt(postID));
-        setPost(matchedPost || null);
+        const res = await axios.get(`${BASE_URL}/api/posts/FetchPost/${postID}`);
+        setPost(res.data);
       } catch (err) {
         console.error("Error fetching post:", err);
       } finally {
@@ -164,7 +163,7 @@ export default function ViewPost() {
                     color: "white",
                   }}
                 >
-                  { post.userName}
+                  {post.userName}
                 </Link> on {new Date(post.publishedAt).toLocaleDateString()}
               </span>
 
