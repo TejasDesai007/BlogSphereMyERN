@@ -19,6 +19,7 @@ export default function ViewPost() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [savedPosts, setSavedPosts] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const user = JSON.parse(sessionStorage.getItem("user"));
   const userID = user ? user.id : null;
@@ -29,7 +30,7 @@ export default function ViewPost() {
     const fetchSavedPosts = async () => {
       if (!userID) return;
       try {
-        const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
+        const res = await axios.get(`${BASE_URL}/api/posts/user-saved/${userID}`);
         const map = {};
         res.data.forEach(id => map[id] = true);
         setSavedPosts(map);
@@ -39,33 +40,42 @@ export default function ViewPost() {
     };
 
     fetchSavedPosts();
-  }, [userID]);
+  }, [userID, BASE_URL]);
 
   useEffect(() => {
     const fetchPostData = async () => {
+      if (!postID) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const [postRes, likeRes, userLikeRes, commentRes] = await Promise.all([
-          axios.get(`${BASE_URL}/api/posts/FetchPost/${postID}`),
+        // Fetch post first
+        const postRes = await axios.get(`${BASE_URL}/api/posts/FetchPost/${postID}`);
+        setPost(postRes.data);
+
+        // Then fetch other data in parallel
+        const [likeRes, userLikeRes, commentRes] = await Promise.all([
           axios.get(`${BASE_URL}/api/posts/likes-count`),
-          axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`),
+          userID ? axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`) : Promise.resolve({ data: [] }),
           axios.get(`${BASE_URL}/api/posts/comments/${postID}`)
         ]);
 
-        setPost(postRes.data);
         setLikes(likeRes.data[postID] || 0);
         setHasLiked(userLikeRes.data.includes(postID));
         setComments(commentRes.data);
       } catch (err) {
         console.error("Error fetching post data:", err);
+        if (err.response?.status === 404) {
+          setPost(null);
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    if (postID) {
-      fetchPostData();
-    }
-  }, [postID, userID]);
+    fetchPostData();
+  }, [postID, userID, BASE_URL]);
 
   const decodedContent = useMemo(() => {
     if (!post?.content) return '';
@@ -81,17 +91,31 @@ export default function ViewPost() {
     try {
       if (hasLiked) {
         await axios.post(`${BASE_URL}/api/posts/unlike`, { postID, userID });
+        setLikes(prev => Math.max(0, prev - 1));
+        setHasLiked(false);
       } else {
         await axios.post(`${BASE_URL}/api/posts/like`, { postID, userID });
+        setLikes(prev => prev + 1);
+        setHasLiked(true);
       }
 
-      const likeRes = await axios.get(`${BASE_URL}/api/posts/likes-count`);
-      const userLikeRes = await axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`);
+      // Sync with server to ensure accuracy
+      const [likeRes, userLikeRes] = await Promise.all([
+        axios.get(`${BASE_URL}/api/posts/likes-count`),
+        axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`)
+      ]);
 
       setLikes(likeRes.data[postID] || 0);
       setHasLiked(userLikeRes.data.includes(postID));
     } catch (err) {
       console.error("Error toggling like:", err);
+      // Revert optimistic update on error
+      const [likeRes, userLikeRes] = await Promise.all([
+        axios.get(`${BASE_URL}/api/posts/likes-count`),
+        axios.get(`${BASE_URL}/api/posts/user-liked/${userID}`)
+      ]);
+      setLikes(likeRes.data[postID] || 0);
+      setHasLiked(userLikeRes.data.includes(postID));
     }
   };
 
@@ -106,41 +130,81 @@ export default function ViewPost() {
 
       if (isSaved) {
         await axios.post(`${BASE_URL}/api/posts/unsave-post`, { postID, userID });
+        setSavedPosts(prev => ({ ...prev, [postID]: false }));
       } else {
         await axios.post(`${BASE_URL}/api/posts/savepost`, { postID, userID });
+        setSavedPosts(prev => ({ ...prev, [postID]: true }));
       }
 
-      const res = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
+      // Sync with server
+      const res = await axios.get(`${BASE_URL}/api/posts/user-saved/${userID}`);
       const map = {};
       res.data.forEach(id => map[id] = true);
       setSavedPosts(map);
     } catch (err) {
       console.error("Error saving/unsaving post:", err);
+      // Revert optimistic update on error
+      const res = await axios.get(`${BASE_URL}/api/posts/user-saved/${userID}`);
+      const map = {};
+      res.data.forEach(id => map[id] = true);
+      setSavedPosts(map);
     }
   };
 
   const handleCommentSubmit = async () => {
-    if (!userID || newComment.trim() === "") return;
+    if (!userID) {
+      navigate("/login");
+      return;
+    }
 
+    if (newComment.trim() === "" || isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
       await axios.post(`${BASE_URL}/api/posts/comments`, {
         postID,
         userID,
-        comment: newComment
+        comment: newComment.trim()
       });
 
+      // Fetch updated comments
       const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
       setComments(res.data);
-      console.log(res.data);
       setNewComment("");
     } catch (err) {
       console.error("Error posting comment:", err);
+      alert("Failed to post comment. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (loading) return <div className="container py-5">Loading...</div>;
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleCommentSubmit();
+    }
+  };
 
-  if (!post) return <div className="alert alert-danger">Post not found</div>;
+  if (loading) return (
+    <div className="container py-5">
+      <div className="text-center">
+        <div className="spinner-border" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+        <p className="mt-2">Loading post...</p>
+      </div>
+    </div>
+  );
+
+  if (!post) return (
+    <div className="container py-5">
+      <div className="alert alert-danger">
+        <h4>Post not found</h4>
+        <p>The post you're looking for doesn't exist or has been removed.</p>
+        <Link to="/" className="btn btn-primary">Go back to home</Link>
+      </div>
+    </div>
+  );
 
   return (
     <div className="card h-100">
@@ -219,37 +283,80 @@ export default function ViewPost() {
         </div>
 
         <div className="mb-4">
+          <h5>Comments</h5>
           {comments.length > 0 ? (
-            <ul className="list-group">
-              {comments.map((c, i) => (
-                <li className="list-group-item" key={i}>
-                  <strong>{c.username}</strong>: {c.Content}
-                </li>
+            <div className="list-group">
+              {comments.map((comment, i) => (
+                <div className="list-group-item" key={comment._id || i}>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <div>
+                      <strong className="text-primary">
+                        {comment.user?.username || comment.username || "Anonymous"}
+                      </strong>
+                      <p className="mb-1 mt-1">{comment.content || comment.Content}</p>
+                      {comment.createdAt && (
+                        <small className="text-muted">
+                          {new Date(comment.createdAt).toLocaleDateString()} at{' '}
+                          {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : (
-            <p>No comments yet.</p>
+            <p className="text-muted">No comments yet. Be the first to comment!</p>
           )}
         </div>
 
         <div>
+          <h6>Add a comment</h6>
           <textarea
             className="form-control mb-2"
-            placeholder="Write a comment..."
+            placeholder="Write a comment... (Ctrl+Enter to submit)"
             rows="3"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={isSubmitting}
           ></textarea>
-          <button className="btn btn-primary" onClick={handleCommentSubmit}>Submit</button>
+          <button 
+            className="btn btn-primary" 
+            onClick={handleCommentSubmit}
+            disabled={isSubmitting || newComment.trim() === ""}
+          >
+            {isSubmitting ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                Submitting...
+              </>
+            ) : (
+              "Submit Comment"
+            )}
+          </button>
         </div>
 
         {selectedImage && (
-          <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div 
+            className="modal fade show d-block" 
+            tabIndex="-1" 
+            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setSelectedImage(null);
+              }
+            }}
+          >
             <div className="modal-dialog modal-lg">
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title">Image Preview</h5>
-                  <button type="button" className="btn-close" onClick={() => setSelectedImage(null)}></button>
+                  <button 
+                    type="button" 
+                    className="btn-close" 
+                    onClick={() => setSelectedImage(null)}
+                  ></button>
                 </div>
                 <div className="modal-body text-center">
                   <img src={selectedImage} className="img-fluid" alt="Preview" />

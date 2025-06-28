@@ -17,6 +17,7 @@ export default function Homepage() {
   const [newComment, setNewComment] = useState("");
   const [savedPosts, setSavedPosts] = useState({});
   const [followMap, setFollowMap] = useState({});
+  const [loading, setLoading] = useState({});
   const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const navigate = useNavigate();
@@ -42,13 +43,14 @@ export default function Homepage() {
           userLikesRes.data.forEach(postID => likedMap[postID] = true);
           setUserLikedPosts(likedMap);
 
-          const userSavedRes = await axios.get(`${BASE_URL}/api/posts/savedposts/${userID}`);
+          const userSavedRes = await axios.get(`${BASE_URL}/api/posts/user-saved/${userID}`);
           const savedMap = {};
           userSavedRes.data.forEach(postID => savedMap[postID] = true);
           setSavedPosts(savedMap);
 
+          // ✅ FIX: Use consistent user._id for follow status
           const followStatuses = {};
-          const uniqueAuthorIDs = [...new Set(postsRes.data.map(post => post.userId))].filter(id => id !== userID);
+          const uniqueAuthorIDs = [...new Set(postsRes.data.map(post => post.user._id))].filter(id => id !== userID);
 
           for (let authorId of uniqueAuthorIDs) {
             try {
@@ -56,6 +58,7 @@ export default function Homepage() {
               followStatuses[authorId] = res.data.isFollowing;
             } catch (err) {
               console.error(`Error checking follow status for user ${authorId}:`, err);
+              followStatuses[authorId] = false; // Default to false on error
             }
           }
 
@@ -68,31 +71,63 @@ export default function Homepage() {
     };
 
     fetchAll();
-  }, []);
+  }, [userID, BASE_URL]);
 
   const handleFollow = async (followedId) => {
+    if (!userID) {
+      navigate('/login');
+      return;
+    }
+
+    // Prevent multiple clicks
+    if (loading[followedId]) return;
+    
+    setLoading(prev => ({ ...prev, [followedId]: true }));
+
     try {
-      await axios.post(`${BASE_URL}/api/follows`, {
+      const response = await axios.post(`${BASE_URL}/api/follows`, {
         followerId: userID,
         followedId,
       });
+      
+      console.log("Follow success:", response.data);
       setFollowMap(prev => ({ ...prev, [followedId]: true }));
     } catch (err) {
-      console.error("Follow failed", err);
+      console.error("Follow failed:", err);
+      // Show user-friendly error
+      alert("Failed to follow user. Please try again.");
+    } finally {
+      setLoading(prev => ({ ...prev, [followedId]: false }));
     }
   };
 
   const handleUnfollow = async (followedId) => {
+    if (!userID) {
+      navigate('/login');
+      return;
+    }
+
+    // Prevent multiple clicks
+    if (loading[followedId]) return;
+    
+    setLoading(prev => ({ ...prev, [followedId]: true }));
+
     try {
-      await axios.delete(`${BASE_URL}/api/follows`, {
+      const response = await axios.delete(`${BASE_URL}/api/follows`, {
         data: {
           followerId: userID,
           followedId,
         },
       });
+      
+      console.log("Unfollow success:", response.data);
       setFollowMap(prev => ({ ...prev, [followedId]: false }));
     } catch (err) {
-      console.error("Unfollow failed", err);
+      console.error("Unfollow failed:", err);
+      // Show user-friendly error
+      alert("Failed to unfollow user. Please try again.");
+    } finally {
+      setLoading(prev => ({ ...prev, [followedId]: false }));
     }
   };
 
@@ -254,15 +289,32 @@ export default function Homepage() {
                       {post.user.username}
                     </Link> on {new Date(post.publishedAt).toLocaleDateString()}
                   </span>
-                  {user && user.id !== post.userId && (
+                  {/* ✅ FIX: Use consistent post.user._id instead of post.userId */}
+                  {user && user.id !== post.user._id && (
                     <span className="ms-2">
-                      {followMap[post.userId] ? (
-                        <button className="btn btn-sm" onClick={() => handleUnfollow(post.userId)}>
-                          <i className="fas fa-user-minus"></i>
+                      {followMap[post.user._id] ? (
+                        <button 
+                          className="btn btn-sm" 
+                          onClick={() => handleUnfollow(post.user._id)}
+                          disabled={loading[post.user._id]}
+                        >
+                          {loading[post.user._id] ? (
+                            <i className="fas fa-spinner fa-spin"></i>
+                          ) : (
+                            <i className="fas fa-user-minus"></i>
+                          )}
                         </button>
                       ) : (
-                        <button className="btn btn-sm" onClick={() => handleFollow(post.userId)}>
-                          <i className="fas fa-user-plus"></i>
+                        <button 
+                          className="btn btn-sm" 
+                          onClick={() => handleFollow(post.user._id)}
+                          disabled={loading[post.user._id]}
+                        >
+                          {loading[post.user._id] ? (
+                            <i className="fas fa-spinner fa-spin"></i>
+                          ) : (
+                            <i className="fas fa-user-plus"></i>
+                          )}
                         </button>
                       )}
                     </span>
@@ -317,8 +369,13 @@ export default function Homepage() {
       </div>
 
       {showCommentsPostID && (
-        <div className="modal fade show" style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-lg">
+        <div className="modal-backdrop" style={{
+          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+          backgroundColor: "rgba(0, 0, 0, 0.5)", zIndex: 1040
+        }}
+          onClick={() => setShowCommentsPostID(null)}
+        >
+          <div className="modal-dialog modal-lg" style={{ margin: "10% auto", zIndex: 1050 }} onClick={e => e.stopPropagation()}>
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Comments</h5>
@@ -329,7 +386,7 @@ export default function Homepage() {
                   <ul className="list-group mb-3">
                     {comments.map((c, i) => (
                       <li className="list-group-item mt-2" key={i}>
-                        <strong>{c.username}</strong>: {c.Content}
+                        <strong> {c.user?.username || c.username || "Anonymous"}</strong>: {c.content}
                       </li>
                     ))}
                   </ul>
@@ -349,6 +406,7 @@ export default function Homepage() {
           </div>
         </div>
       )}
+
     </>
   );
 }
