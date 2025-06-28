@@ -131,6 +131,7 @@ export default function ViewPost() {
 
       const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
       setComments(res.data);
+      console.log(res.data);
       setNewComment("");
     } catch (err) {
       console.error("Error posting comment:", err);
