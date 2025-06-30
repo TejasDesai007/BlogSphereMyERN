@@ -121,13 +121,13 @@ const Profile = () => {
             <div className="card shadow-sm rounded-4 mb-4">
                 <div className="card-body text-center">
                     <i className="fas fa-user-circle fa-5x text-secondary mb-3"></i>
-                    <h3 className="card-title">{user.Name}</h3>
+                    <h3 className="card-title">{user.username}</h3>
                     <p className="card-text text-muted mb-1">
-                        <i className="fas fa-envelope me-2"></i>{user.Email}
+                        <i className="fas fa-envelope me-2"></i>{user.email}
                     </p>
                     <p className="card-text text-muted">
                         <i className="fas fa-calendar-alt me-2"></i>
-                        Joined on {user.CreatedAt ? new Date(user.CreatedAt).toLocaleDateString() : "N/A"}
+                        Joined on {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A"}
                     </p>
                     <p className="card-text text-muted">
                         <i className="fas fa-file-alt me-2"></i>
@@ -250,7 +250,7 @@ const Profile = () => {
                                             <i className="fas fa-user-circle fa-2x text-secondary mb-2"></i>
                                             <h6 className="card-title">{user.Username}</h6>
                                             <p className="card-text text-muted mb-0">
-                                                <i className="fas fa-envelope me-1"></i>{user.Email}
+                                                <i className="fas fa-envelope me-1"></i>{user.email}
                                             </p>
                                         </div>
                                     </div>
