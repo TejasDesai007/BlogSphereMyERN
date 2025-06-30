@@ -20,7 +20,7 @@ const Profile = () => {
     const [followedUsers, setFollowedUsers] = useState([]);
     const [showFollows, setShowFollows] = useState(false);
     const [followLoading, setFollowLoading] = useState(false);
-      const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     useEffect(() => {
         if (!storedUser) {
@@ -207,7 +207,9 @@ const Profile = () => {
                                     <div
                                         className="text-muted mb-2"
                                         dangerouslySetInnerHTML={{
-                                            __html: he.decode(post.Content.substring(0, 100)) + "..."
+                                            __html: post.Content
+                                                ? he.decode(post.Content.substring(0, 100)) + "..."
+                                                : "No content available.",
                                         }}
                                     />
                                     <small className="text-secondary d-block mb-2">
