@@ -58,16 +58,100 @@ router.post('/upload', upload.array('images', 5), async (req, res) => {
   }
 });
 
-// 📄 Get All Posts
+// 📄 Get All Posts with Pagination (NEW - Instagram-style)
 router.get('/FetchPost', async (req, res) => {
   try {
-    const posts = await Post.find()
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6; // Start with 6 posts per page
+    const skip = (page - 1) * limit;
+    
+    // Get search query if provided
+    const searchQuery = req.query.search || '';
+    
+    // Build search filter
+    let searchFilter = {};
+    if (searchQuery) {
+      searchFilter = {
+        $or: [
+          { title: { $regex: searchQuery, $options: 'i' } },
+          { content: { $regex: searchQuery, $options: 'i' } }
+        ]
+      };
+    }
+
+    // Get posts with pagination
+    const posts = await Post.find(searchFilter)
       .populate('user', 'username')
       .sort({ publishedAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
-    res.json(posts);
+
+    // Get total count for pagination info
+    const totalPosts = await Post.countDocuments(searchFilter);
+    const totalPages = Math.ceil(totalPosts / limit);
+    const hasNextPage = page < totalPages;
+
+    res.json({
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasNextPage,
+        limit
+      }
+    });
   } catch (err) {
+    console.error('Error fetching posts:', err);
     res.status(500).json({ message: 'Failed to fetch posts' });
+  }
+});
+
+// 📄 Get Initial Data (likes, comments, user-specific data)
+router.get('/InitialData/:userID?', async (req, res) => {
+  try {
+    const userID = req.params.userID;
+    
+    // Get likes count and comments count
+    const [likesAgg, commentsAgg] = await Promise.all([
+      Like.aggregate([
+        { $group: { _id: '$post', count: { $sum: 1 } } }
+      ]),
+      Comment.aggregate([
+        { $group: { _id: '$post', count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const likesCount = {};
+    const commentsCount = {};
+    
+    likesAgg.forEach(item => likesCount[item._id] = item.count);
+    commentsAgg.forEach(item => commentsCount[item._id] = item.count);
+
+    let userSpecificData = {};
+    
+    if (userID) {
+      // Get user's liked posts and saved posts
+      const [userLikes, userSaved] = await Promise.all([
+        Like.find({ user: userID }).select('post -_id'),
+        SavedPost.find({ user: userID }).select('post -_id')
+      ]);
+
+      userSpecificData = {
+        likedPosts: userLikes.map(l => l.post),
+        savedPosts: userSaved.map(s => s.post)
+      };
+    }
+
+    res.json({
+      likesCount,
+      commentsCount,
+      ...userSpecificData
+    });
+  } catch (err) {
+    console.error('Error fetching initial data:', err);
+    res.status(500).json({ message: 'Failed to fetch initial data' });
   }
 });
 
@@ -89,17 +173,27 @@ router.post('/like', async (req, res) => {
   const { postID, userID } = req.body;
   try {
     await Like.create({ post: postID, user: userID });
-    res.sendStatus(200);
+    
+    // Return updated count
+    const count = await Like.countDocuments({ post: postID });
+    res.json({ message: 'Post liked', count });
   } catch (err) {
-    if (err.code === 11000) return res.status(200).json({ message: 'Already liked' });
+    if (err.code === 11000) {
+      const count = await Like.countDocuments({ post: req.body.postID });
+      return res.status(200).json({ message: 'Already liked', count });
+    }
     console.error(err);
     res.sendStatus(500);
   }
 });
 
 router.post('/unlike', async (req, res) => {
-  await Like.deleteOne({ post: req.body.postID, user: req.body.userID });
-  res.sendStatus(200);
+  const { postID, userID } = req.body;
+  await Like.deleteOne({ post: postID, user: userID });
+  
+  // Return updated count
+  const count = await Like.countDocuments({ post: postID });
+  res.json({ message: 'Post unliked', count });
 });
 
 router.get('/user-liked/:userID', async (req, res) => {
@@ -129,15 +223,20 @@ router.get('/comments-count', async (req, res) => {
   const agg = await Comment.aggregate([
     { $group: { _id: '$post', count: { $sum: 1 } } }
   ]);
-  const result = {}; agg.forEach(a => result[a._id] = a.count);
+  const result = {}; 
+  agg.forEach(a => result[a._id] = a.count);
   res.json(result);
 });
 
 router.post('/comments', async (req, res) => {
   const { postID, userID, comment } = req.body;
   if (!postID || !userID || !comment?.trim()) return res.status(400).json({ message: 'Missing fields' });
+  
   const c = await Comment.create({ post: postID, user: userID, content: comment });
-  res.json({ message: 'Comment added', commentId: c._id });
+  
+  // Return updated count
+  const count = await Comment.countDocuments({ post: postID });
+  res.json({ message: 'Comment added', commentId: c._id, count });
 });
 
 // 🔖 Save / Unsave
