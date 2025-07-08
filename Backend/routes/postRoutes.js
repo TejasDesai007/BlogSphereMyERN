@@ -256,9 +256,21 @@ router.post('/unsave-post', async (req, res) => {
   res.json({ message: 'Post unsaved' });
 });
 
-router.get('/user-saved/:userID', async (req, res) => {
-  const saved = await SavedPost.find({ user: req.params.userID }).select('post -_id');
-  res.json(saved.map(s => s.post));
+router.get('/user-saved/:userId', async (req, res) => {
+    try {
+        const savedPosts = await SavedPost.find({ user: req.params.userId })
+            .populate('post')
+            .sort({ createdAt: -1 })
+            .lean();
+            
+        // Extract the post objects from the saved posts
+        const posts = savedPosts.map(sp => sp.post);
+        
+        res.json(posts);
+    } catch (err) {
+        console.error('Error fetching saved posts:', err);
+        res.status(500).json({ message: 'Failed to fetch saved posts' });
+    }
 });
 
 // 🗑️ Delete Post + Cloudinary Images
@@ -279,5 +291,16 @@ router.delete('/DeletePost/:postID', async (req, res) => {
     res.status(500).json({ message: 'Error deleting post' });
   }
 });
-
+router.get('/user/:userId', async (req, res) => {
+    try {
+        const posts = await Post.find({ user: req.params.userId })
+            .sort({ publishedAt: -1 })
+            .lean();
+            
+        res.json(posts);
+    } catch (err) {
+        console.error('Error fetching user posts:', err);
+        res.status(500).json({ message: 'Failed to fetch user posts' });
+    }
+});
 module.exports = router;
