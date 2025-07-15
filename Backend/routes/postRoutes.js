@@ -30,18 +30,26 @@ const upload = multer({ storage });
 
 // ➕ Add Post
 router.post('/AddPost', async (req, res) => {
-  const { title, content, userId } = req.body;
-  if (!title || !content || !userId) return res.status(400).json({ message: 'Missing fields' });
-   
+  const { title, content, userId, tags } = req.body;
+  if (!title || !content || !userId) {
+    return res.status(400).json({ message: 'Missing fields' });
+  }
+
   try {
-    const post = await Post.create({ title, content, user: userId });
-    
+    const post = await Post.create({
+      title,
+      content,
+      user: userId,
+      tags: tags || [], // Save tags if provided, default to empty array
+    });
+
     res.json({ message: 'Successfully posted!', postId: post._id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'DB error' });
   }
 });
+
 
 // 🖼️ Upload Images to Cloudinary
 router.post('/upload', upload.array('images', 5), async (req, res) => {
@@ -64,10 +72,10 @@ router.get('/FetchPost', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 6; // Start with 6 posts per page
     const skip = (page - 1) * limit;
-    
+
     // Get search query if provided
     const searchQuery = req.query.search || '';
-    
+
     // Build search filter
     let searchFilter = {};
     if (searchQuery) {
@@ -109,10 +117,11 @@ router.get('/FetchPost', async (req, res) => {
 });
 
 // 📄 Get Initial Data (likes, comments, user-specific data)
+// 📄 Get Initial Data (likes, comments, user-specific data) - FIXED
 router.get('/InitialData/:userID?', async (req, res) => {
   try {
     const userID = req.params.userID;
-    
+
     // Get likes count and comments count
     const [likesAgg, commentsAgg] = await Promise.all([
       Like.aggregate([
@@ -125,33 +134,53 @@ router.get('/InitialData/:userID?', async (req, res) => {
 
     const likesCount = {};
     const commentsCount = {};
-    
-    likesAgg.forEach(item => likesCount[item._id] = item.count);
-    commentsAgg.forEach(item => commentsCount[item._id] = item.count);
 
-    let userSpecificData = {};
-    
+    likesAgg.forEach(item => {
+      if (item._id) { // Ensure _id exists
+        likesCount[item._id.toString()] = item.count;
+      }
+    });
+
+    commentsAgg.forEach(item => {
+      if (item._id) { // Ensure _id exists
+        commentsCount[item._id.toString()] = item.count;
+      }
+    });
+
+    let userSpecificData = {
+      likedPosts: [],
+      savedPosts: []
+    };
+
     if (userID) {
       // Get user's liked posts and saved posts
       const [userLikes, userSaved] = await Promise.all([
-        Like.find({ user: userID }).select('post -_id'),
-        SavedPost.find({ user: userID }).select('post -_id')
+        Like.find({ user: userID }).select('post -_id').lean(),
+        SavedPost.find({ user: userID }).select('post -_id').lean()
       ]);
 
       userSpecificData = {
-        likedPosts: userLikes.map(l => l.post),
-        savedPosts: userSaved.map(s => s.post)
+        likedPosts: userLikes.map(l => l.post.toString()),
+        savedPosts: userSaved.map(s => s.post.toString())
       };
     }
 
     res.json({
+      success: true,
       likesCount,
       commentsCount,
       ...userSpecificData
     });
   } catch (err) {
     console.error('Error fetching initial data:', err);
-    res.status(500).json({ message: 'Failed to fetch initial data' });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch initial data',
+      likesCount: {},
+      commentsCount: {},
+      likedPosts: [],
+      savedPosts: []
+    });
   }
 });
 
@@ -173,7 +202,7 @@ router.post('/like', async (req, res) => {
   const { postID, userID } = req.body;
   try {
     await Like.create({ post: postID, user: userID });
-    
+
     // Return updated count
     const count = await Like.countDocuments({ post: postID });
     res.json({ message: 'Post liked', count });
@@ -190,7 +219,7 @@ router.post('/like', async (req, res) => {
 router.post('/unlike', async (req, res) => {
   const { postID, userID } = req.body;
   await Like.deleteOne({ post: postID, user: userID });
-  
+
   // Return updated count
   const count = await Like.countDocuments({ post: postID });
   res.json({ message: 'Post unliked', count });
@@ -223,7 +252,7 @@ router.get('/comments-count', async (req, res) => {
   const agg = await Comment.aggregate([
     { $group: { _id: '$post', count: { $sum: 1 } } }
   ]);
-  const result = {}; 
+  const result = {};
   agg.forEach(a => result[a._id] = a.count);
   res.json(result);
 });
@@ -231,9 +260,9 @@ router.get('/comments-count', async (req, res) => {
 router.post('/comments', async (req, res) => {
   const { postID, userID, comment } = req.body;
   if (!postID || !userID || !comment?.trim()) return res.status(400).json({ message: 'Missing fields' });
-  
+
   const c = await Comment.create({ post: postID, user: userID, content: comment });
-  
+
   // Return updated count
   const count = await Comment.countDocuments({ post: postID });
   res.json({ message: 'Comment added', commentId: c._id, count });
@@ -257,20 +286,20 @@ router.post('/unsave-post', async (req, res) => {
 });
 
 router.get('/user-saved/:userId', async (req, res) => {
-    try {
-        const savedPosts = await SavedPost.find({ user: req.params.userId })
-            .populate('post')
-            .sort({ createdAt: -1 })
-            .lean();
-            
-        // Extract the post objects from the saved posts
-        const posts = savedPosts.map(sp => sp.post);
-        
-        res.json(posts);
-    } catch (err) {
-        console.error('Error fetching saved posts:', err);
-        res.status(500).json({ message: 'Failed to fetch saved posts' });
-    }
+  try {
+    const savedPosts = await SavedPost.find({ user: req.params.userId })
+      .populate('post')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Extract the post objects from the saved posts
+    const posts = savedPosts.map(sp => sp.post);
+
+    res.json(posts);
+  } catch (err) {
+    console.error('Error fetching saved posts:', err);
+    res.status(500).json({ message: 'Failed to fetch saved posts' });
+  }
 });
 
 // 🗑️ Delete Post + Cloudinary Images
@@ -292,15 +321,15 @@ router.delete('/DeletePost/:postID', async (req, res) => {
   }
 });
 router.get('/user/:userId', async (req, res) => {
-    try {
-        const posts = await Post.find({ user: req.params.userId })
-            .sort({ publishedAt: -1 })
-            .lean();
-            
-        res.json(posts);
-    } catch (err) {
-        console.error('Error fetching user posts:', err);
-        res.status(500).json({ message: 'Failed to fetch user posts' });
-    }
+  try {
+    const posts = await Post.find({ user: req.params.userId })
+      .sort({ publishedAt: -1 })
+      .lean();
+
+    res.json(posts);
+  } catch (err) {
+    console.error('Error fetching user posts:', err);
+    res.status(500).json({ message: 'Failed to fetch user posts' });
+  }
 });
 module.exports = router;

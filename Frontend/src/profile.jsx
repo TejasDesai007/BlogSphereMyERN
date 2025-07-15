@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import he from "he"; // 👈 Import he
+import { useNavigate, Link } from "react-router-dom";
+import he from "he";
 
 const Profile = () => {
     const [user, setUser] = useState(null);
@@ -16,7 +16,6 @@ const Profile = () => {
     const [savedPosts, setSavedPosts] = useState([]);
     const [showSavedPosts, setShowSavedPosts] = useState(false);
     const [savedPostsLoading, setSavedPostsLoading] = useState(false);
-
     const [followedUsers, setFollowedUsers] = useState([]);
     const [showFollows, setShowFollows] = useState(false);
     const [followLoading, setFollowLoading] = useState(false);
@@ -46,13 +45,15 @@ const Profile = () => {
 
         try {
             await axios.delete(`${BASE_URL}/api/posts/DeletePost/${postID}`);
-            setPosts(prevPosts => prevPosts.filter(p => p.PostID !== postID));
+            setPosts(prevPosts => prevPosts.filter(p => p._id !== postID));
         } catch (err) {
             console.error("Error deleting post:", err);
             alert("Failed to delete the post. Please try again.");
         }
     };
+
     const fetchFollowedUsers = async () => {
+        // Toggle the follows section and close others
         if (showFollows) {
             setShowFollows(false);
             return;
@@ -74,6 +75,7 @@ const Profile = () => {
     };
 
     const fetchSavedPosts = async () => {
+        // Toggle the saved posts section and close others
         if (showSavedPosts) {
             setShowSavedPosts(false);
             return;
@@ -81,6 +83,7 @@ const Profile = () => {
 
         if (!user) return;
         setShowPosts(false);
+        setShowFollows(false);
         setSavedPostsLoading(true);
         try {
             const res = await axios.get(`${BASE_URL}/api/posts/user-saved/${storedUser.id}`);
@@ -92,15 +95,16 @@ const Profile = () => {
         setSavedPostsLoading(false);
     };
 
-
     const fetchUserPosts = async () => {
+        // Toggle the posts section and close others
         if (showPosts) {
-            setShowPosts(false); // close panel if open
+            setShowPosts(false);
             return;
         }
 
         if (!user) return;
         setShowSavedPosts(false);
+        setShowFollows(false);
         setPostsLoading(true);
         try {
             const res = await axios.get(`${BASE_URL}/api/posts/user/${storedUser.id}`);
@@ -134,7 +138,6 @@ const Profile = () => {
                         {user.postCount || 0} Post{user.postCount === 1 ? "" : "s"}
                     </p>
                     <div className="mt-4">
-                        {/* Replaces the Edit Profile button */}
                         <button
                             className="btn px-3 py-1 me-2 text-white border-0"
                             onClick={fetchFollowedUsers}
@@ -148,15 +151,14 @@ const Profile = () => {
                             <i className="fas fa-users"></i>
                         </button>
 
-
                         <button
                             className="btn px-3 py-1 me-2 text-white border-0"
                             onClick={fetchUserPosts}
                             style={{
                                 background: showPosts
-                                    ? "linear-gradient(to right, #56ab2f, #a8e063)" // show posts (green)
-                                    : "linear-gradient(to right, #43cea2, #185a9d)", // hide posts (blue)
-                                color: showPosts ? "white" : "#28a745",
+                                    ? "linear-gradient(to right, #56ab2f, #a8e063)"
+                                    : "linear-gradient(to right, #43cea2, #185a9d)",
+                                color: "white"
                             }}
                         >
                             <i className="fas fa-blog"></i>
@@ -166,10 +168,10 @@ const Profile = () => {
                             className="btn px-3 py-1 me-2 text-white border-0"
                             onClick={fetchSavedPosts}
                             style={{
-                                background: savedPosts
-                                    ? "linear-gradient(to right, #56ab2f, #a8e063)" // saved posts (green)
-                                    : "linear-gradient(to right, #43cea2, #185a9d)", // unsaved posts (blue)
-                                color: savedPosts ? "white" : "#28a745",
+                                background: showSavedPosts
+                                    ? "linear-gradient(to right, #56ab2f, #a8e063)"
+                                    : "linear-gradient(to right, #43cea2, #185a9d)",
+                                color: "white"
                             }}
                         >
                             <i className="fas fa-bookmark"></i>
@@ -179,13 +181,12 @@ const Profile = () => {
                             href="/logout"
                             className="btn px-3 py-1 text-white border-0"
                             style={{
-                                background: "linear-gradient(to right, #e43a45, #d08e73)", // gradient for logout button (red to orange)
+                                background: "linear-gradient(to right, #e43a45, #d08e73)",
                                 color: "white",
                             }}
                         >
                             <i className="fas fa-sign-out-alt"></i>
                         </a>
-
                     </div>
                 </div>
             </div>
@@ -201,34 +202,33 @@ const Profile = () => {
                         <div className="text-muted text-center">You haven't written any posts yet.</div>
                     ) : (
                         posts.map(post => (
-                            <div key={post.PostID} className="card shadow-sm rounded-4 mb-3">
+                            <div key={post._id} className="card shadow-sm rounded-4 mb-3">
                                 <div className="card-body">
-                                    <h5 className="card-title mb-1">{post.Title}</h5>
+                                    <h5 className="card-title mb-1">{post.title}</h5>
                                     <div
                                         className="text-muted mb-2"
                                         dangerouslySetInnerHTML={{
-                                            __html: post.Content
-                                                ? he.decode(post.Content.substring(0, 100)) + "..."
+                                            __html: post.content
+                                                ? he.decode(post.content.substring(0, 100)) + "..."
                                                 : "No content available.",
                                         }}
                                     />
                                     <small className="text-secondary d-block mb-2">
-                                        Published on {new Date(post.PublishedAt).toLocaleDateString()}
+                                        Published on {new Date(post.publishedAt).toLocaleDateString()}
                                     </small>
                                     <div>
-                                        <a
-                                            href={`/ViewPost?postID=${post.PostID}`}
+                                        <Link
+                                            to={`/ViewPost?postID=${post._id}`}
                                             className="btn btn-sm btn-primary me-2"
                                         >
                                             <i className="fas fa-eye me-1"></i> View
-                                        </a>
+                                        </Link>
                                         <button
                                             className="btn btn-sm btn-outline-danger"
-                                            onClick={() => DeletePost(post.PostID)}
+                                            onClick={() => DeletePost(post._id)}
                                         >
                                             <i className="fas fa-trash-alt me-1"></i> Delete
                                         </button>
-
                                     </div>
                                 </div>
                             </div>
@@ -236,6 +236,8 @@ const Profile = () => {
                     )}
                 </div>
             )}
+
+            {/* Followed Users Section */}
             {showFollows && (
                 <div>
                     <h4 className="fw-bold text-center mb-3">Following</h4>
@@ -250,7 +252,7 @@ const Profile = () => {
                                     <div className="card shadow-sm rounded-4">
                                         <div className="card-body text-center">
                                             <i className="fas fa-user-circle fa-2x text-secondary mb-2"></i>
-                                            <h6 className="card-title">{user.Username}</h6>
+                                            <h6 className="card-title">{user.username}</h6>
                                             <p className="card-text text-muted mb-0">
                                                 <i className="fas fa-envelope me-1"></i>{user.email}
                                             </p>
@@ -263,6 +265,7 @@ const Profile = () => {
                 </div>
             )}
 
+            {/* Saved Posts Section */}
             {showSavedPosts && (
                 <div>
                     <h4 className="fw-bold text-center mb-3">Saved Posts</h4>
@@ -273,34 +276,31 @@ const Profile = () => {
                         <div className="text-muted text-center">No saved posts yet.</div>
                     ) : (
                         savedPosts.map(post => (
-                            <div key={post.PostID} className="card shadow-sm rounded-4 mb-3">
+                            <div key={post._id} className="card shadow-sm rounded-4 mb-3">
                                 <div className="card-body">
-                                    <h5 className="card-title mb-1">{post.Title}</h5>
+                                    <h5 className="card-title mb-1">{post.title}</h5>
                                     <div
                                         className="text-muted mb-2"
                                         dangerouslySetInnerHTML={{
-                                            __html: he.decode(post.Content.substring(0, 100)) + "..."
+                                            __html: he.decode(post.content.substring(0, 100)) + "..."
                                         }}
                                     />
                                     <small className="text-secondary d-block mb-2">
-                                        Published on {new Date(post.PublishedAt).toLocaleDateString()}
+                                        Published on {new Date(post.publishedAt).toLocaleDateString()}
                                     </small>
-                                    <a
-                                        href={`/ViewPost?postID=${post.PostID}`}
+                                    <Link
+                                        to={`/ViewPost?postID=${post._id}`}
                                         className="btn btn-sm btn-primary"
                                     >
                                         <i className="fas fa-eye me-1"></i> View
-                                    </a>
+                                    </Link>
                                 </div>
                             </div>
                         ))
                     )}
                 </div>
             )}
-
         </div>
-
-
     );
 };
 

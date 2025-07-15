@@ -1,177 +1,303 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
+import "react-quill/dist/quill.snow.css";
+import ReactQuill from "react-quill";
+import axios from "axios";
 
-const Registration = () => {
+const AddPost = () => {
     const navigate = useNavigate();
-
-    // State for form inputs
-    const [formData, setFormData] = useState({
-        email: "",
-        username: "",
-        password: "",
-        confirmPassword: "",
-    });
-
-    const [errors, setErrors] = useState({});
-    const [usernameMsg, setUsernameMsg] = useState(""); // For username availability message
+    const [title, setTitle] = useState("");
+    const [content, setContent] = useState("");
+    const [images, setImages] = useState([]);
+    const [previews, setPreviews] = useState([]);
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [suggestion, setSuggestion] = useState("");
+    const quillRef = useRef(null);
     const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-    
-    // Handle input change
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
 
-    // Validate form before submission
-    const validateForm = () => {
-        let errors = {};
-        if (!formData.email) errors.email = "Email is required";
-        if (!formData.username) errors.username = "Username is required";
-        if (!formData.password) errors.password = "Password is required";
-        if (formData.password.length < 8)
-            errors.password = "Password must be at least 8 characters long";
-        if (formData.password !== formData.confirmPassword)
-            errors.confirmPassword = "Passwords do not match";
-        return errors;
-    };
-
-    // Check username availability
-    const checkUsername = async () => {
-        if (formData.username.trim() === "") {
-            setUsernameMsg("Username cannot be empty.");
-            return;
+    useEffect(() => {
+        const user = sessionStorage.getItem("user");
+        if (!user) {
+            navigate("/login");
         }
+    }, [navigate]);
 
-        // Uncomment this to check username availability via API
-        /*
+    const handleImageChange = (e) => {
+        const files = Array.from(e.target.files).slice(0, 5);
+        setImages(files);
+        setPreviews(files.map(file => URL.createObjectURL(file)));
+    };
+
+    // Get plain text from HTML content
+    const getPlainText = (htmlContent) => {
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        return tempDiv.textContent || tempDiv.innerText || "";
+    };
+
+    // Insert suggestion at cursor position
+    const insertSuggestion = () => {
+        if (!suggestion || !quillRef.current) return;
+        
+        const quill = quillRef.current.getEditor();
+        const range = quill.getSelection();
+        
+        if (range) {
+            // Get the current text to check what's before the cursor
+            const currentText = quill.getText();
+            const beforeCursor = currentText.substring(0, range.index);
+            const lastChar = beforeCursor.slice(-1);
+            
+            // Only add space if the last character is not a space, newline, or empty
+            const needsSpace = lastChar && lastChar !== ' ' && lastChar !== '\n' && lastChar !== '\t';
+            
+            const textToInsert = needsSpace ? ` ${suggestion}` : suggestion;
+            
+            // Insert the suggestion
+            quill.insertText(range.index, textToInsert);
+            
+            // Set cursor position after the inserted text
+            const newPosition = range.index + textToInsert.length;
+            quill.setSelection(newPosition, 0);
+        }
+        
+        setSuggestion("");
+    };
+
+    // Handle keyboard events
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Only handle Tab when there's a suggestion
+            if (e.key === "Tab" && suggestion) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                insertSuggestion();
+                return false;
+            }
+        };
+
+        // Add event listener to the quill editor specifically
+        if (quillRef.current) {
+            const quill = quillRef.current.getEditor();
+            const editorElement = quill.root;
+            editorElement.addEventListener("keydown", handleKeyDown, true);
+            
+            return () => {
+                editorElement.removeEventListener("keydown", handleKeyDown, true);
+            };
+        }
+    }, [suggestion]);
+
+    // Fetch prediction from backend
+    const fetchPrediction = async (text) => {
         try {
-          const response = await fetch(`http://localhost:8082/ValidatedUsername?username=${formData.username}`);
-          const data = await response.json();
-    
-          if (data.status === "Valid") {
-            setUsernameMsg("Username is available.");
-          } else if (data.status === "Invalid") {
-            setUsernameMsg("Username is already taken.");
-          } else {
-            setUsernameMsg("Error checking username.");
-          }
-        } catch (error) {
-          setUsernameMsg("Error checking username. Please try again.");
+            const response = await axios.post("http://localhost:5002/generate", {
+                text: text.trim()
+            });
+            
+            if (response.data && response.data.next_word) {
+                setSuggestion(response.data.next_word);
+            }
+        } catch (err) {
+            console.error("Prediction error:", err);
+            setSuggestion("");
         }
-        */
     };
 
-    // Handle form submission
+    const handleContentChange = async (value) => {
+        const plainText = getPlainText(value);
+        const wordCount = plainText.trim().split(/\s+/).filter(word => word).length;
+
+        if (wordCount <= 500) {
+            setContent(value);
+            setError("");
+
+            // Fetch new prediction if we have enough words
+            if (wordCount >= 2) {
+                // Debounce the prediction request
+                setTimeout(() => {
+                    fetchPrediction(plainText);
+                }, 500);
+            } else {
+                setSuggestion("");
+            }
+        } else {
+            setError("Content must not exceed 500 words.");
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const errors = validateForm();
-        setErrors(errors);
+        setError("");
+        setLoading(true);
 
-        if (Object.keys(errors).length === 0) {
-            if (window.confirm("Are you sure you want to register?")) {
-                try {
-                    const response = await fetch(`${BASE_URL}/api/users/register`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(formData),
-                    });
+        try {
+            const user = JSON.parse(sessionStorage.getItem("user"));
+            const postRes = await fetch(`${BASE_URL}/api/posts/AddPost`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ title, content, userId: user.id }),
+            });
 
+            const contentType = postRes.headers.get("content-type");
+            let postData;
+            if (contentType && contentType.includes("application/json")) {
+                postData = await postRes.json();
+            } else {
+                const textResponse = await postRes.text();
+                throw new Error(`Non-JSON response: ${textResponse.substring(0, 100)}...`);
+            }
 
-                    const data = await response.json(); // Read JSON response from server
+            if (!postRes.ok) {
+                throw new Error(postData.message || "Failed to create post.");
+            }
 
-                    if (response.ok) {
-                        alert("Registration successful!");
-                        navigate("/Login");
-                    } else {
-                        alert(data.message || "Registration failed! Try again."); // Show backend error message
-                    }
-                } catch (error) {
-                    console.error("Error registering user:", error);
-                    alert("Something went wrong! Please check your connection and try again.");
+            const postId = postData.postId;
+
+            if (images.length > 0) {
+                const formData = new FormData();
+                images.forEach((img) => formData.append("images", img));
+                formData.append("postId", postId);
+
+                const imgRes = await fetch(`${BASE_URL}/api/posts/upload`, {
+                    method: "POST",
+                    credentials: "include",
+                    body: formData,
+                });
+
+                const imgContentType = imgRes.headers.get("content-type");
+                let imgData;
+                if (imgContentType && imgContentType.includes("application/json")) {
+                    imgData = await imgRes.json();
+                } else {
+                    const imgTextResponse = await imgRes.text();
+                    throw new Error(`Image upload failed: ${imgTextResponse.substring(0, 100)}...`);
+                }
+
+                if (!imgRes.ok) {
+                    throw new Error(imgData.error || imgData.message || "Image upload failed!");
                 }
             }
-        }
 
+            navigate("/");
+        } catch (err) {
+            console.error("Submit error:", err);
+            setError(err.message || "An unexpected error occurred");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Custom toolbar for ReactQuill
+    const modules = {
+        toolbar: [
+            [{ 'header': [1, 2, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            ['link', 'image'],
+            ['clean']
+        ],
     };
 
     return (
-        <div className="container d-flex justify-content-center align-items-center min-vh-100">
-            <div className="card p-4 shadow" style={{ width: "400px" }}>
-                <h5 className="card-title text-center">
-                    <i className="fas fa-blog"></i> Blog Sphere
-                </h5>
-                <p className="text-center">Enter Your Details Here!</p>
+        <div className="container py-4">
+            <div className="row justify-content-center">
+                <div className="col-md-8">
+                    <div className="card shadow">
+                        <div className="card-body">
+                            <h4 className="card-title text-center mb-4">
+                                <i className="fas fa-pen-nib me-2"></i> New Blog Post
+                            </h4>
 
-                <form onSubmit={handleSubmit}>
-                    {/* Email */}
-                    <div className="mb-3">
-                        <label className="form-label">Email:</label>
-                        <input
-                            type="email"
-                            name="email"
-                            className="form-control form-control-sm"
-                            value={formData.email}
-                            onChange={handleChange}
-                        />
-                        {errors.email && <small className="text-danger">{errors.email}</small>}
-                    </div>
+                            {error && <div className="alert alert-danger">{error}</div>}
 
-                    {/* Username */}
-                    <div className="mb-3">
-                        <label className="form-label">Username:</label>
-                        <input
-                            type="text"
-                            name="username"
-                            className="form-control form-control-sm"
-                            value={formData.username}
-                            onChange={handleChange}
-                            onBlur={checkUsername}
-                        />
-                        <small className={usernameMsg.includes("taken") ? "text-danger" : "text-success"}>
-                            {usernameMsg}
-                        </small>
-                        {errors.username && <small className="text-danger">{errors.username}</small>}
-                    </div>
+                            <form onSubmit={handleSubmit}>
+                                <div className="mb-3">
+                                    <label className="form-label">Title</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={title}
+                                        onChange={(e) => setTitle(e.target.value)}
+                                        required
+                                    />
+                                </div>
 
-                    {/* Password */}
-                    <div className="mb-3">
-                        <label className="form-label">Password:</label>
-                        <input
-                            type="password"
-                            name="password"
-                            className="form-control form-control-sm"
-                            value={formData.password}
-                            onChange={handleChange}
-                        />
-                        {errors.password && <small className="text-danger">{errors.password}</small>}
-                    </div>
+                                <div className="mb-3">
+                                    <label className="form-label">Content</label>
+                                    
+                                    <ReactQuill
+                                        ref={quillRef}
+                                        theme="snow"
+                                        value={content}
+                                        onChange={handleContentChange}
+                                        modules={modules}
+                                        placeholder="Write your blog content here..."
+                                        style={{ height: "200px", marginBottom: "50px" }}
+                                    />
 
-                    {/* Confirm Password */}
-                    <div className="mb-3">
-                        <label className="form-label">Confirm Password:</label>
-                        <input
-                            type="password"
-                            name="confirmPassword"
-                            className="form-control form-control-sm"
-                            value={formData.confirmPassword}
-                            onChange={handleChange}
-                        />
-                        {errors.confirmPassword && (
-                            <small className="text-danger">{errors.confirmPassword}</small>
-                        )}
-                    </div>
+                                    {/* Suggestion box */}
+                                    {suggestion && (
+                                        <div className="alert alert-info mt-2 d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i className="fas fa-lightbulb me-2"></i>
+                                                Suggested next word: <strong>{suggestion}</strong>
+                                            </div>
+                                            <small className="text-muted">
+                                                Press <kbd>Tab</kbd> to accept
+                                            </small>
+                                        </div>
+                                    )}
 
-                    {/* Register Button */}
-                    <div className="text-center">
-                        <button type="submit" className="btn btn-success">
-                            Proceed
-                        </button>
+                                    <small className="text-muted d-block mt-2">
+                                        Word Count: {
+                                            getPlainText(content).trim().split(/\s+/).filter(word => word).length
+                                        } / 500 &nbsp; | &nbsp;
+                                        Letter Count: {
+                                            getPlainText(content).replace(/\s/g, "").length
+                                        }
+                                    </small>
+                                </div>
+
+                                <div className="mb-3">
+                                    <label className="form-label">Upload Images (Max 5)</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="form-control"
+                                        onChange={handleImageChange}
+                                    />
+                                    <div className="mt-2 d-flex flex-wrap gap-2">
+                                        {previews.map((src, idx) => (
+                                            <img
+                                                key={idx}
+                                                src={src}
+                                                alt={`Preview ${idx}`}
+                                                className="rounded"
+                                                style={{ maxHeight: "100px", maxWidth: "100px" }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="d-grid">
+                                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                                        {loading ? "Posting..." : <><i className="fas fa-upload me-2"></i>Post</>}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     );
 };
 
-export default Registration;
+export default AddPost;

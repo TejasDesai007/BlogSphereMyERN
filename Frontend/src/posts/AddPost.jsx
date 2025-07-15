@@ -1,12 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-quill/dist/quill.snow.css";
 import ReactQuill from "react-quill";
-
-
+import axios from "axios";
 
 const AddPost = () => {
     const navigate = useNavigate();
@@ -16,19 +14,168 @@ const AddPost = () => {
     const [previews, setPreviews] = useState([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [suggestion, setSuggestion] = useState("");
+    const [isListening, setIsListening] = useState(false);
+    const [speechSupported, setSpeechSupported] = useState(false);
+    const [tagInput, setTagInput] = useState("");
+    const [tags, setTags] = useState([]);
+
+    const quillRef = useRef(null);
+    const recognitionRef = useRef(null);
     const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     useEffect(() => {
         const user = sessionStorage.getItem("user");
-        if (!user) {
-            navigate("/login");
+        if (!user) navigate("/login");
+
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            setSpeechSupported(true);
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = true;
+            recognitionRef.current.interimResults = true;
+            recognitionRef.current.lang = 'en-US';
+
+            recognitionRef.current.onstart = () => {
+                setIsListening(true);
+                setError("");
+            };
+
+            recognitionRef.current.onend = () => setIsListening(false);
+
+            recognitionRef.current.onerror = (event) => {
+                setIsListening(false);
+                if (event.error === 'not-allowed') {
+                    setError("Microphone access denied.");
+                } else if (event.error === 'no-speech') {
+                    setError("No speech detected.");
+                } else {
+                    setError(`Speech error: ${event.error}`);
+                }
+            };
+
+            recognitionRef.current.onresult = (event) => {
+                let transcript = '';
+                let isFinal = false;
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                    if (event.results[i].isFinal) isFinal = true;
+                }
+                if (isFinal && transcript.trim()) insertSpeechText(transcript.trim());
+            };
         }
     }, [navigate]);
 
     const handleImageChange = (e) => {
-        const files = Array.from(e.target.files).slice(0, 5); // max 5 images
+        const files = Array.from(e.target.files).slice(0, 5);
         setImages(files);
         setPreviews(files.map(file => URL.createObjectURL(file)));
+    };
+
+    const getPlainText = (htmlContent) => {
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        return tempDiv.textContent || tempDiv.innerText || "";
+    };
+
+    const insertSpeechText = (text) => {
+        if (!quillRef.current) return;
+        const quill = quillRef.current.getEditor();
+        const range = quill.getSelection();
+        const insert = (index) => {
+            const textBefore = quill.getText(Math.max(0, index - 1), 1);
+            const needsSpace = textBefore && textBefore !== ' ' && textBefore !== '\n';
+            const textToInsert = needsSpace ? ` ${text}` : text;
+            quill.insertText(index, textToInsert, 'user');
+            quill.setSelection(index + textToInsert.length);
+            const newContent = quill.root.innerHTML;
+            setContent(newContent);
+            const plainText = getPlainText(newContent);
+            const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+            if (wordCount >= 2) setTimeout(() => fetchPrediction(plainText), 500);
+        };
+        if (range) insert(range.index);
+        else insert(quill.getLength() - 1);
+    };
+
+    const toggleSpeechRecognition = () => {
+        if (!speechSupported) {
+            setError("Speech recognition not supported.");
+            return;
+        }
+        if (isListening) recognitionRef.current.stop();
+        else recognitionRef.current.start();
+    };
+
+    const insertSuggestion = () => {
+        if (!suggestion || !quillRef.current) return;
+        const quill = quillRef.current.getEditor();
+        const range = quill.getSelection();
+        const insert = (index) => {
+            const textBefore = quill.getText(Math.max(0, index - 1), 1);
+            const needsSpace = textBefore && textBefore !== ' ' && textBefore !== '\n';
+            const textToInsert = needsSpace ? ` ${suggestion}` : suggestion;
+            quill.insertText(index, textToInsert, 'user');
+            quill.setSelection(index + textToInsert.length);
+        };
+        if (range) insert(range.index);
+        else insert(quill.getLength() - 1);
+        setSuggestion("");
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === "Tab" && suggestion) {
+                e.preventDefault();
+                insertSuggestion();
+            }
+        };
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [suggestion]);
+
+    const fetchPrediction = async (text) => {
+        try {
+            const response = await axios.post("http://localhost:5002/generate", { text: text.trim() });
+            if (response.data && response.data.next_word) setSuggestion(response.data.next_word);
+        } catch (err) {
+            console.error("Prediction error:", err);
+            setSuggestion("");
+        }
+    };
+
+    const handleContentChange = (value) => {
+        const plainText = getPlainText(value);
+        const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+        if (wordCount <= 500) {
+            setContent(value);
+            setError("");
+            if (wordCount >= 2) {
+                setTimeout(() => fetchPrediction(plainText), 500);
+            } else {
+                setSuggestion("");
+            }
+        } else {
+            setError("Content must not exceed 500 words.");
+        }
+    };
+
+    const handleTagKeyDown = (e) => {
+        if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+            e.preventDefault();
+            addTag(tagInput.trim());
+        }
+    };
+
+    const addTag = (newTag) => {
+        if (!tags.includes(newTag) && tags.length < 10) {
+            setTags([...tags, newTag]);
+        }
+        setTagInput("");
+    };
+
+    const removeTag = (tagToRemove) => {
+        setTags(tags.filter(tag => tag !== tagToRemove));
     };
 
     const handleSubmit = async (e) => {
@@ -37,95 +184,66 @@ const AddPost = () => {
         setLoading(true);
 
         try {
-            // Debug logs
-            console.log("BASE_URL:", BASE_URL);
-            console.log("Full API URL:", `${BASE_URL}/api/posts/AddPost`);
-
             const user = JSON.parse(sessionStorage.getItem("user"));
-            console.log("User from sessionStorage:", user);
-
-            // Step 1: Create Post without images
             const postRes = await fetch(`${BASE_URL}/api/posts/AddPost`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 credentials: "include",
-                body: JSON.stringify({
-                    title,
-                    content,
-                    userId: user.id,
-                }),
+                body: JSON.stringify({ title, content, userId: user.id, tags }),
             });
 
-            console.log("Response status:", postRes.status);
-            console.log("Response ok:", postRes.ok);
-
-            // Check if response is JSON
             const contentType = postRes.headers.get("content-type");
-            console.log("Content-Type:", contentType);
-
             let postData;
-            if (contentType && contentType.includes("application/json")) {
+            if (contentType?.includes("application/json")) {
                 postData = await postRes.json();
             } else {
                 const textResponse = await postRes.text();
-                console.log("Non-JSON response received:", textResponse);
-                throw new Error(`Server returned non-JSON response: ${textResponse.substring(0, 100)}...`);
+                throw new Error(`Non-JSON response: ${textResponse.substring(0, 100)}...`);
             }
 
-            console.log("Post response data:", postData);
-
-            if (!postRes.ok) {
-                throw new Error(postData.message || "Failed to create post.");
-            }
-
+            if (!postRes.ok) throw new Error(postData.message || "Post creation failed.");
             const postId = postData.postId;
-            console.log("Created post ID:", postId);
 
-            // Step 2: Upload images for that Post
             if (images.length > 0) {
-                console.log("Uploading images for post:", postId);
-
                 const formData = new FormData();
                 images.forEach((img) => formData.append("images", img));
                 formData.append("postId", postId);
 
                 const imgRes = await fetch(`${BASE_URL}/api/posts/upload`, {
                     method: "POST",
-                    credentials: "include", // Add this
+                    credentials: "include",
                     body: formData,
                 });
 
-                console.log("Image upload response status:", imgRes.status);
-
                 const imgContentType = imgRes.headers.get("content-type");
                 let imgData;
-
-                if (imgContentType && imgContentType.includes("application/json")) {
+                if (imgContentType?.includes("application/json")) {
                     imgData = await imgRes.json();
                 } else {
                     const imgTextResponse = await imgRes.text();
-                    console.log("Image upload non-JSON response:", imgTextResponse);
                     throw new Error(`Image upload failed: ${imgTextResponse.substring(0, 100)}...`);
                 }
 
-                console.log("Image upload response data:", imgData);
-
-                if (!imgRes.ok) {
-                    throw new Error(imgData.error || imgData.message || "Image upload failed!");
-                }
+                if (!imgRes.ok) throw new Error(imgData.message || "Image upload failed.");
             }
 
-            console.log("Post created successfully, navigating to home");
             navigate("/");
-
         } catch (err) {
-            console.error("Submit error details:", err);
+            console.error("Submit error:", err);
             setError(err.message || "An unexpected error occurred");
         } finally {
             setLoading(false);
         }
+    };
+
+    const modules = {
+        toolbar: [
+            [{ 'header': [1, 2, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+            ['link', 'image'],
+            ['clean']
+        ],
     };
 
     return (
@@ -153,35 +271,79 @@ const AddPost = () => {
                                 </div>
 
                                 <div className="mb-3">
-                                    <label className="form-label">Content</label>
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                        <label className="form-label mb-0">Content</label>
+                                        <button
+                                            type="button"
+                                            className={`btn btn-sm ${isListening ? 'btn-danger' : 'btn-outline-primary'}`}
+                                            onClick={toggleSpeechRecognition}
+                                            title={isListening ? "Stop" : "Start"}
+                                            disabled={!speechSupported}
+                                        >
+                                            <i className={`fas ${isListening ? 'fa-microphone-slash' : 'fa-microphone'} me-1`}></i>
+                                            {isListening ? 'Stop Recording' : 'Start Recording'}
+                                        </button>
+                                    </div>
+
+                                    {!speechSupported && (
+                                        <div className="alert alert-warning">Speech recognition is not supported.</div>
+                                    )}
+                                    {isListening && (
+                                        <div className="alert alert-info">
+                                            <i className="fas fa-microphone me-2"></i> Listening...
+                                        </div>
+                                    )}
+
                                     <ReactQuill
+                                        ref={quillRef}
                                         theme="snow"
                                         value={content}
-                                        onChange={(value) => {
-                                            const text = value.replace(/<[^>]+>/g, ""); // remove HTML tags
-                                            const wordCount = text.trim().split(/\s+/).filter(word => word).length;
-                                            if (wordCount <= 500) {
-                                                setContent(value);
-                                                setError(""); // clear previous error if any
-                                            } else {
-                                                setError("Content must not exceed 500 words.");
-                                            }
-                                        }}
+                                        onChange={handleContentChange}
+                                        modules={modules}
                                         placeholder="Write your blog content here..."
-                                        style={{ height: "200px" }}
+                                        style={{ height: "200px", marginBottom: "50px" }}
                                     />
 
+                                    {suggestion && (
+                                        <div className="alert alert-info mt-2 d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i className="fas fa-lightbulb me-2"></i>
+                                                Suggested word: <strong>{suggestion}</strong>
+                                            </div>
+                                            <small className="text-muted">Press <kbd>Tab</kbd> to accept</small>
+                                        </div>
+                                    )}
+
+                                    <small className="text-muted d-block mt-2">
+                                        Word Count: {getPlainText(content).trim().split(/\s+/).filter(Boolean).length} / 500 &nbsp; | &nbsp;
+                                        Letters: {getPlainText(content).replace(/\s/g, "").length}
+                                    </small>
                                 </div>
-                                <br></br>
-                                <small className="text-muted d-block mt-2">
-                                    Word Count: {
-                                        content.replace(/<[^>]+>/g, "").trim().split(/\s+/).filter(word => word).length
-                                    } / 500 &nbsp; | &nbsp;
-                                    Letter Count: {
-                                        content.replace(/<[^>]+>/g, "").replace(/\s/g, "").length
-                                    }
-                                </small>
-                                <br></br>
+
+                                <div className="mb-3">
+                                    <label className="form-label">Tags (Max 10)</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={tagInput}
+                                        onChange={(e) => setTagInput(e.target.value)}
+                                        onKeyDown={handleTagKeyDown}
+                                        placeholder="Type a tag and press Enter"
+                                    />
+                                    <div className="mt-2 d-flex flex-wrap gap-2">
+                                        {tags.map((tag, idx) => (
+                                            <span key={idx} className="badge bg-secondary">
+                                                {tag}{" "}
+                                                <i
+                                                    className="fas fa-times ms-1"
+                                                    style={{ cursor: "pointer" }}
+                                                    onClick={() => removeTag(tag)}
+                                                ></i>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="mb-3">
                                     <label className="form-label">Upload Images (Max 5)</label>
                                     <input
@@ -203,7 +365,6 @@ const AddPost = () => {
                                         ))}
                                     </div>
                                 </div>
-
 
                                 <div className="d-grid">
                                     <button type="submit" className="btn btn-primary" disabled={loading}>
