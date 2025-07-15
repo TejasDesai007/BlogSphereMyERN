@@ -66,37 +66,216 @@ router.post('/upload', upload.array('images', 5), async (req, res) => {
   }
 });
 
-// 📄 Get All Posts with Pagination (NEW - Instagram-style)
+// Enhanced backend route with comprehensive search and filtering
 router.get('/FetchPost', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 6; // Start with 6 posts per page
+    const limit = parseInt(req.query.limit) || 6;
     const skip = (page - 1) * limit;
 
-    // Get search query if provided
+    // Get search and filter parameters
     const searchQuery = req.query.search || '';
+    const sortBy = req.query.sortBy || 'publishedAt'; // publishedAt, title, likes, comments
+    const sortOrder = req.query.sortOrder || 'desc'; // asc, desc
+    const dateFilter = req.query.dateFilter || ''; // today, week, month, year
+    const tagFilter = req.query.tagFilter || ''; // specific tag
+    const authorFilter = req.query.authorFilter || ''; // specific author
 
     // Build search filter
     let searchFilter = {};
+
     if (searchQuery) {
+      // Create comprehensive search across multiple fields
+      const searchRegex = { $regex: searchQuery, $options: 'i' };
+
       searchFilter = {
         $or: [
-          { title: { $regex: searchQuery, $options: 'i' } },
-          { content: { $regex: searchQuery, $options: 'i' } }
+          { title: searchRegex },
+          { content: searchRegex },
+          { tags: { $in: [searchRegex] } }, // Search in tags array
+          { 'user.username': searchRegex } // Will be handled in aggregation
         ]
       };
     }
 
-    // Get posts with pagination
-    const posts = await Post.find(searchFilter)
-      .populate('user', 'username')
-      .sort({ publishedAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    // Add tag filter
+    if (tagFilter) {
+      searchFilter.tags = { $in: [new RegExp(tagFilter, 'i')] };
+    }
 
-    // Get total count for pagination info
-    const totalPosts = await Post.countDocuments(searchFilter);
+    // Add author filter
+    let authorFilterId = null;
+    if (authorFilter) {
+      // Find user by username
+      const User = require('../models/User'); // Adjust path as needed
+      const author = await User.findOne({
+        username: { $regex: authorFilter, $options: 'i' }
+      });
+      if (author) {
+        authorFilterId = author._id;
+      }
+    }
+
+    // Add date filter
+    if (dateFilter) {
+      const now = new Date();
+      let startDate;
+
+      switch (dateFilter) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+      }
+
+      if (startDate) {
+        searchFilter.publishedAt = { $gte: startDate };
+      }
+    }
+
+    // Add author filter to search
+    if (authorFilterId) {
+      searchFilter.user = authorFilterId;
+    }
+
+    // Build sort object
+    let sortObj = {};
+    if (sortBy === 'likes' || sortBy === 'comments') {
+      // For likes and comments, we'll handle sorting in aggregation
+      sortObj = { publishedAt: sortOrder === 'asc' ? 1 : -1 };
+    } else {
+      sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    }
+
+    // Use aggregation pipeline for complex search with username
+    const pipeline = [
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: '$user'
+      }
+    ];
+
+    // Add search stage if needed
+    if (searchQuery) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { title: { $regex: searchQuery, $options: 'i' } },
+            { content: { $regex: searchQuery, $options: 'i' } },
+            { tags: { $in: [new RegExp(searchQuery, 'i')] } },
+            { 'user.username': { $regex: searchQuery, $options: 'i' } }
+          ]
+        }
+      });
+    }
+
+    // Add other filters
+    const matchStages = [];
+    if (tagFilter) {
+      matchStages.push({ tags: { $in: [new RegExp(tagFilter, 'i')] } });
+    }
+    if (authorFilterId) {
+      matchStages.push({ user: authorFilterId });
+    }
+    if (dateFilter && searchFilter.publishedAt) {
+      matchStages.push({ publishedAt: searchFilter.publishedAt });
+    }
+
+    if (matchStages.length > 0) {
+      pipeline.push({
+        $match: { $and: matchStages }
+      });
+    }
+
+    // Add lookup for likes and comments count if sorting by them
+    if (sortBy === 'likes' || sortBy === 'comments') {
+      if (sortBy === 'likes') {
+        pipeline.push({
+          $lookup: {
+            from: 'likes',
+            localField: '_id',
+            foreignField: 'post',
+            as: 'likesArray'
+          }
+        });
+        pipeline.push({
+          $addFields: {
+            likesCount: { $size: '$likesArray' }
+          }
+        });
+      }
+
+      if (sortBy === 'comments') {
+        pipeline.push({
+          $lookup: {
+            from: 'comments',
+            localField: '_id',
+            foreignField: 'post',
+            as: 'commentsArray'
+          }
+        });
+        pipeline.push({
+          $addFields: {
+            commentsCount: { $size: '$commentsArray' }
+          }
+        });
+      }
+    }
+
+    // Add sorting
+    if (sortBy === 'likes') {
+      pipeline.push({ $sort: { likesCount: sortOrder === 'asc' ? 1 : -1 } });
+    } else if (sortBy === 'comments') {
+      pipeline.push({ $sort: { commentsCount: sortOrder === 'asc' ? 1 : -1 } });
+    } else {
+      pipeline.push({ $sort: sortObj });
+    }
+
+    // Add pagination
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limit });
+
+    // Project only needed fields
+    pipeline.push({
+      $project: {
+        title: 1,
+        content: 1,
+        images: 1,
+        tags: 1,
+        publishedAt: 1,
+        user: {
+          _id: 1,
+          username: 1
+        },
+        likesCount: 1,
+        commentsCount: 1
+      }
+    });
+
+    // Execute aggregation
+    const posts = await Post.aggregate(pipeline);
+
+    // Get total count for pagination (run similar pipeline without skip/limit)
+    const countPipeline = pipeline.slice(0, -3); // Remove skip, limit, and project
+    countPipeline.push({ $count: "total" });
+    const totalResult = await Post.aggregate(countPipeline);
+    const totalPosts = totalResult[0]?.total || 0;
+
     const totalPages = Math.ceil(totalPosts / limit);
     const hasNextPage = page < totalPages;
 
@@ -108,6 +287,14 @@ router.get('/FetchPost', async (req, res) => {
         totalPosts,
         hasNextPage,
         limit
+      },
+      appliedFilters: {
+        search: searchQuery,
+        sortBy,
+        sortOrder,
+        dateFilter,
+        tagFilter,
+        authorFilter
       }
     });
   } catch (err) {
@@ -330,6 +517,49 @@ router.get('/user/:userId', async (req, res) => {
   } catch (err) {
     console.error('Error fetching user posts:', err);
     res.status(500).json({ message: 'Failed to fetch user posts' });
+  }
+});
+
+// Additional route to get popular tags for filter suggestions
+router.get('/popular-tags', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    
+    const pipeline = [
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit },
+      { $project: { tag: '$_id', count: 1, _id: 0 } }
+    ];
+
+    const popularTags = await Post.aggregate(pipeline);
+    res.json(popularTags);
+  } catch (err) {
+    console.error('Error fetching popular tags:', err);
+    res.status(500).json({ message: 'Failed to fetch popular tags' });
+  }
+});
+
+// Route to get user suggestions for author filter
+router.get('/users-suggestions', async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const User = require('../models/User'); // Adjust path as needed
+    
+    const users = await User.find({
+      username: { $regex: query, $options: 'i' }
+    })
+    .select('username _id')
+    .limit(limit)
+    .lean();
+
+    res.json(users);
+  } catch (err) {
+    console.error('Error fetching user suggestions:', err);
+    res.status(500).json({ message: 'Failed to fetch user suggestions' });
   }
 });
 module.exports = router;
