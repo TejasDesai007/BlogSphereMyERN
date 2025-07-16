@@ -217,10 +217,10 @@ router.get('/scrape-theverge', async (req, res) => {
                     for (const imgSel of imageSelectors) {
                         const imgEl = $(el).find(imgSel);
                         if (imgEl.length > 0) {
-                            image = imgEl.attr('src') || 
-                                   imgEl.attr('data-src') || 
-                                   imgEl.attr('data-lazy-src') ||
-                                   imgEl.attr('data-original');
+                            image = imgEl.attr('src') ||
+                                imgEl.attr('data-src') ||
+                                imgEl.attr('data-lazy-src') ||
+                                imgEl.attr('data-original');
                             if (image && !image.includes('placeholder')) break;
                         }
                     }
@@ -259,7 +259,7 @@ router.get('/scrape-theverge', async (req, res) => {
         articles.forEach((article, index) => {
             console.log(`The Verge - Article ${index + 1}:`, article.title);
         });
-
+        console.log({ articles: articles.slice(0, 12) });
         res.json({ articles: articles.slice(0, 12) });
     } catch (err) {
         console.error('The Verge scraping failed:', err.message);
