@@ -11,7 +11,7 @@ router.get('/scrape-techcrunch', async (req, res) => {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
-        
+
         const $ = cheerio.load(data);
         const articles = [];
 
@@ -38,7 +38,7 @@ router.get('/scrape-techcrunch', async (req, res) => {
 
             if (elements.length > 0) {
                 foundArticles = true;
-                
+
                 elements.each((i, el) => {
                     // Try multiple title selectors
                     const titleSelectors = [
@@ -54,7 +54,7 @@ router.get('/scrape-techcrunch', async (req, res) => {
 
                     let title = '';
                     let url = '';
-                    
+
                     for (const titleSel of titleSelectors) {
                         const titleEl = $(el).find(titleSel);
                         if (titleEl.length > 0) {
@@ -88,14 +88,14 @@ router.get('/scrape-techcrunch', async (req, res) => {
                     }
 
                     if (title && url) {
-                        articles.push({ 
-                            title, 
-                            url, 
-                            image: image || 'https://via.placeholder.com/400x200?text=No+Image' 
+                        articles.push({
+                            title,
+                            url,
+                            image: image || 'https://via.placeholder.com/400x200?text=No+Image'
                         });
                     }
                 });
-                
+
                 if (articles.length > 0) {
                     break; // Found articles, stop trying other selectors
                 }
@@ -119,49 +119,42 @@ router.get('/scrape-techcrunch', async (req, res) => {
     }
 });
 
-// Alternative endpoint for debugging
-router.get('/debug-techcrunch', async (req, res) => {
+
+router.get('/scrape-theverge', async (req, res) => {
     try {
-        const { data } = await axios.get('https://techcrunch.com/', {
+        const { data } = await axios.get('https://www.theverge.com/', {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0'
             }
         });
-        
+
         const $ = cheerio.load(data);
-        
-        // Return debugging info
-        const debugInfo = {
-            pageTitle: $('title').text(),
-            pageLength: data.length,
-            availableSelectors: []
-        };
+        const articles = [];
 
-        // Check for common article selectors
-        const selectorsToCheck = [
-            'article',
-            '.post-block',
-            '.post',
-            '.entry',
-            '[data-module="PostBlock"]',
-            '.wp-block-tc23-post-picker',
-            '.post-list-item'
-        ];
+        const selector = 'div[data-chorus-optimize-field="headline"]';
 
-        selectorsToCheck.forEach(selector => {
-            const count = $(selector).length;
-            if (count > 0) {
-                debugInfo.availableSelectors.push({
-                    selector,
-                    count,
-                    sampleHTML: $(selector).first().html()?.substring(0, 200) + '...'
-                });
+        $(selector).each((i, el) => {
+            const titleEl = $(el).find('a');
+            const title = titleEl.text().trim();
+            let url = titleEl.attr('href');
+
+            let image = $(el).closest('div.c-entry-box--compact').find('noscript img').attr('src') ||
+                $(el).closest('div.c-entry-box--compact').find('img').attr('src') ||
+                'https://via.placeholder.com/400x200?text=No+Image';
+
+            if (url && !url.startsWith('http')) {
+                url = `https://www.theverge.com${url}`;
+            }
+
+            if (title && url) {
+                articles.push({ title, url, image });
             }
         });
 
-        res.json(debugInfo);
+        res.json({ articles: articles.slice(0, 12) }); // Return only top 12
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Scraping The Verge failed:", err.message);
+        res.status(500).json({ error: "Scraping failed", details: err.message });
     }
 });
 
