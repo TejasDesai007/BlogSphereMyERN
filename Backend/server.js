@@ -15,7 +15,7 @@ const blogScraper = require('./routes/blogScraper');
 
 const db = require("./config/db");
 const app = express();
-
+app.set('trust proxy', 1);
 
 // Middleware
 // Update your corsOptions in backend
