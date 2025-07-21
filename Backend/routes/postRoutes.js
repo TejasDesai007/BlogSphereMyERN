@@ -50,7 +50,6 @@ router.post('/AddPost', async (req, res) => {
   }
 });
 
-
 // 🖼️ Upload Images to Cloudinary
 router.post('/upload', upload.array('images', 5), async (req, res) => {
   const { postId } = req.body;
@@ -304,7 +303,6 @@ router.get('/FetchPost', async (req, res) => {
 });
 
 // 📄 Get Initial Data (likes, comments, user-specific data)
-// 📄 Get Initial Data (likes, comments, user-specific data) - FIXED
 router.get('/InitialData/:userID?', async (req, res) => {
   try {
     const userID = req.params.userID;
@@ -408,8 +406,8 @@ router.post('/unlike', async (req, res) => {
   await Like.deleteOne({ post: postID, user: userID });
 
   // Return updated count
-  const count = await Like.countDocuments({ post: postID });
-  res.json({ message: 'Post unliked', count });
+    const count = await Like.countDocuments({ post: postID });
+    res.json({ message: 'Post unliked', count });
 });
 
 router.get('/user-liked/:userID', async (req, res) => {
@@ -426,13 +424,34 @@ router.get('/likes-count', async (req, res) => {
   res.json(result);
 });
 
-// 💬 Comments
+// 💬 Comments - Updated for pagination
 router.get('/comments/:postID', async (req, res) => {
-  const comments = await Comment.find({ post: req.params.postID })
-    .populate('user', 'username')
-    .sort({ createdAt: -1 })
-    .lean();
-  res.json(comments);
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [comments, totalCount] = await Promise.all([
+      Comment.find({ post: req.params.postID })
+        .populate('user', 'username')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Comment.countDocuments({ post: req.params.postID })
+    ]);
+
+    const hasMore = skip + comments.length < totalCount;
+
+    res.json({
+      comments,
+      hasMore,
+      totalCount
+    });
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ message: 'Failed to fetch comments' });
+  }
 });
 
 router.get('/comments-count', async (req, res) => {
@@ -507,6 +526,7 @@ router.delete('/DeletePost/:postID', async (req, res) => {
     res.status(500).json({ message: 'Error deleting post' });
   }
 });
+
 router.get('/user/:userId', async (req, res) => {
   try {
     const posts = await Post.find({ user: req.params.userId })
@@ -562,4 +582,79 @@ router.get('/users-suggestions', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch user suggestions' });
   }
 });
+
+// Follow/Unfollow routes
+router.post('/follows', async (req, res) => {
+  try {
+    const { followerId, followedId } = req.body;
+    
+    if (!followerId || !followedId) {
+      return res.status(400).json({ message: 'Missing followerId or followedId' });
+    }
+
+    if (followerId === followedId) {
+      return res.status(400).json({ message: 'Cannot follow yourself' });
+    }
+
+    const existingFollow = await Follow.findOne({ follower: followerId, followed: followedId });
+    if (existingFollow) {
+      return res.status(400).json({ message: 'Already following this user' });
+    }
+
+    const follow = await Follow.create({
+      follower: followerId,
+      followed: followedId
+    });
+
+    res.json({ message: 'Successfully followed user', follow });
+  } catch (err) {
+    console.error('Error following user:', err);
+    res.status(500).json({ message: 'Failed to follow user' });
+  }
+});
+
+router.delete('/follow', async (req, res) => {
+  try {
+    const { followerId, followedId } = req.body;
+    
+    if (!followerId || !followedId) {
+      return res.status(400).json({ message: 'Missing followerId or followedId' });
+    }
+
+    const result = await Follow.deleteOne({ 
+      follower: followerId, 
+      followed: followedId 
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Follow relationship not found' });
+    }
+
+    res.json({ message: 'Successfully unfollowed user' });
+  } catch (err) {
+    console.error('Error unfollowing user:', err);
+    res.status(500).json({ message: 'Failed to unfollow user' });
+  }
+});
+
+router.get('/follows/check', async (req, res) => {
+  try {
+    const { followerId, followedId } = req.query;
+    
+    if (!followerId || !followedId) {
+      return res.status(400).json({ message: 'Missing followerId or followedId' });
+    }
+
+    const follow = await Follow.findOne({ 
+      follower: followerId, 
+      followed: followedId 
+    });
+
+    res.json({ isFollowing: !!follow });
+  } catch (err) {
+    console.error('Error checking follow status:', err);
+    res.status(500).json({ message: 'Failed to check follow status' });
+  }
+});
+
 module.exports = router;
