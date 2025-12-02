@@ -1,303 +1,390 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import "bootstrap/dist/css/bootstrap.min.css";
-import "@fortawesome/fontawesome-free/css/all.min.css";
-import "react-quill/dist/quill.snow.css";
-import ReactQuill from "react-quill";
-import axios from "axios";
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { FaBlog, FaUserPlus, FaUser, FaEnvelope, FaLock, FaExclamationCircle, FaEye, FaEyeSlash, FaCheck } from "react-icons/fa";
 
-const AddPost = () => {
+const Registration = () => {
     const navigate = useNavigate();
-    const [title, setTitle] = useState("");
-    const [content, setContent] = useState("");
-    const [images, setImages] = useState([]);
-    const [previews, setPreviews] = useState([]);
-    const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [suggestion, setSuggestion] = useState("");
-    const quillRef = useRef(null);
-    const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    const [errors, setErrors] = useState({});
+    const [formData, setFormData] = useState({
+        username: "",
+        email: "",
+        password: "",
+        confirmPassword: ""
+    });
+    const [showPassword, setShowPassword] = useState({
+        password: false,
+        confirmPassword: false
+    });
+    const [isLoading, setIsLoading] = useState(false);
+    const [success, setSuccess] = useState(false);
 
-    useEffect(() => {
-        const user = sessionStorage.getItem("user");
-        if (!user) {
-            navigate("/login");
+    const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+        // Clear error for this field when user starts typing
+        if (errors[e.target.name]) {
+            setErrors(prev => ({ ...prev, [e.target.name]: "" }));
         }
-    }, [navigate]);
-
-    const handleImageChange = (e) => {
-        const files = Array.from(e.target.files).slice(0, 5);
-        setImages(files);
-        setPreviews(files.map(file => URL.createObjectURL(file)));
-    };
-
-    // Get plain text from HTML content
-    const getPlainText = (htmlContent) => {
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = htmlContent;
-        return tempDiv.textContent || tempDiv.innerText || "";
-    };
-
-    // Insert suggestion at cursor position
-    const insertSuggestion = () => {
-        if (!suggestion || !quillRef.current) return;
-        
-        const quill = quillRef.current.getEditor();
-        const range = quill.getSelection();
-        
-        if (range) {
-            // Get the current text to check what's before the cursor
-            const currentText = quill.getText();
-            const beforeCursor = currentText.substring(0, range.index);
-            const lastChar = beforeCursor.slice(-1);
-            
-            // Only add space if the last character is not a space, newline, or empty
-            const needsSpace = lastChar && lastChar !== ' ' && lastChar !== '\n' && lastChar !== '\t';
-            
-            const textToInsert = needsSpace ? ` ${suggestion}` : suggestion;
-            
-            // Insert the suggestion
-            quill.insertText(range.index, textToInsert);
-            
-            // Set cursor position after the inserted text
-            const newPosition = range.index + textToInsert.length;
-            quill.setSelection(newPosition, 0);
-        }
-        
-        setSuggestion("");
-    };
-
-    // Handle keyboard events
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            // Only handle Tab when there's a suggestion
-            if (e.key === "Tab" && suggestion) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                insertSuggestion();
-                return false;
-            }
-        };
-
-        // Add event listener to the quill editor specifically
-        if (quillRef.current) {
-            const quill = quillRef.current.getEditor();
-            const editorElement = quill.root;
-            editorElement.addEventListener("keydown", handleKeyDown, true);
-            
-            return () => {
-                editorElement.removeEventListener("keydown", handleKeyDown, true);
-            };
-        }
-    }, [suggestion]);
-
-    // Fetch prediction from backend
-    const fetchPrediction = async (text) => {
-        try {
-            const response = await axios.post("http://localhost:5002/generate", {
-                text: text.trim()
-            });
-            
-            if (response.data && response.data.next_word) {
-                setSuggestion(response.data.next_word);
-            }
-        } catch (err) {
-            console.error("Prediction error:", err);
-            setSuggestion("");
+        if (errors.confirmPassword && e.target.name === "password") {
+            setErrors(prev => ({ ...prev, confirmPassword: "" }));
         }
     };
 
-    const handleContentChange = async (value) => {
-        const plainText = getPlainText(value);
-        const wordCount = plainText.trim().split(/\s+/).filter(word => word).length;
+    const validateForm = () => {
+        const newErrors = {};
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-        if (wordCount <= 500) {
-            setContent(value);
-            setError("");
-
-            // Fetch new prediction if we have enough words
-            if (wordCount >= 2) {
-                // Debounce the prediction request
-                setTimeout(() => {
-                    fetchPrediction(plainText);
-                }, 500);
-            } else {
-                setSuggestion("");
-            }
-        } else {
-            setError("Content must not exceed 500 words.");
+        if (!formData.username.trim()) {
+            newErrors.username = "Username is required";
+        } else if (formData.username.length < 3) {
+            newErrors.username = "Username must be at least 3 characters";
         }
+
+        if (!formData.email.trim()) {
+            newErrors.email = "Email is required";
+        } else if (!emailRegex.test(formData.email)) {
+            newErrors.email = "Please enter a valid email address";
+        }
+
+        if (!formData.password) {
+            newErrors.password = "Password is required";
+        } else if (formData.password.length < 6) {
+            newErrors.password = "Password must be at least 6 characters";
+        }
+
+        if (!formData.confirmPassword) {
+            newErrors.confirmPassword = "Please confirm your password";
+        } else if (formData.password !== formData.confirmPassword) {
+            newErrors.confirmPassword = "Passwords do not match";
+        }
+
+        return newErrors;
+    };
+
+    const togglePasswordVisibility = (field) => {
+        setShowPassword(prev => ({
+            ...prev,
+            [field]: !prev[field]
+        }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError("");
-        setLoading(true);
+
+        const validationErrors = validateForm();
+        if (Object.keys(validationErrors).length > 0) {
+            setErrors(validationErrors);
+            return;
+        }
+
+        setErrors({});
+        setIsLoading(true);
 
         try {
-            const user = JSON.parse(sessionStorage.getItem("user"));
-            const postRes = await fetch(`${BASE_URL}/api/posts/AddPost`, {
+            const response = await fetch("https://tejasblogsbackend-com.onrender.com/api/users/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ title, content, userId: user.id }),
+                body: JSON.stringify({
+                    username: formData.username,
+                    email: formData.email,
+                    password: formData.password
+                }),
             });
 
-            const contentType = postRes.headers.get("content-type");
-            let postData;
-            if (contentType && contentType.includes("application/json")) {
-                postData = await postRes.json();
+            const data = await response.json();
+
+            if (response.ok) {
+                setSuccess(true);
+
+                // Show success animation
+                const button = e.target.querySelector('button[type="submit"]');
+                button.innerHTML = '<i class="fas fa-check"></i> Success!';
+                button.classList.remove('bg-gradient-to-r', 'from-green-500', 'to-emerald-500', 'hover:from-green-600', 'hover:to-emerald-600');
+                button.classList.add('bg-green-500', 'hover:bg-green-600');
+
+                // Small delay for visual feedback
+                setTimeout(() => {
+                    navigate("/login");
+                }, 1500);
             } else {
-                const textResponse = await postRes.text();
-                throw new Error(`Non-JSON response: ${textResponse.substring(0, 100)}...`);
-            }
-
-            if (!postRes.ok) {
-                throw new Error(postData.message || "Failed to create post.");
-            }
-
-            const postId = postData.postId;
-
-            if (images.length > 0) {
-                const formData = new FormData();
-                images.forEach((img) => formData.append("images", img));
-                formData.append("postId", postId);
-
-                const imgRes = await fetch(`${BASE_URL}/api/posts/upload`, {
-                    method: "POST",
-                    credentials: "include",
-                    body: formData,
+                setErrors({
+                    message: data.message || "Registration failed. Please try again.",
+                    ...(data.email && { email: data.message }),
+                    ...(data.username && { username: data.message })
                 });
-
-                const imgContentType = imgRes.headers.get("content-type");
-                let imgData;
-                if (imgContentType && imgContentType.includes("application/json")) {
-                    imgData = await imgRes.json();
-                } else {
-                    const imgTextResponse = await imgRes.text();
-                    throw new Error(`Image upload failed: ${imgTextResponse.substring(0, 100)}...`);
-                }
-
-                if (!imgRes.ok) {
-                    throw new Error(imgData.error || imgData.message || "Image upload failed!");
-                }
             }
-
-            navigate("/");
-        } catch (err) {
-            console.error("Submit error:", err);
-            setError(err.message || "An unexpected error occurred");
+        } catch (error) {
+            console.error("Registration error:", error);
+            setErrors({
+                message: "Server is unreachable. Please check your connection and try again."
+            });
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    // Custom toolbar for ReactQuill
-    const modules = {
-        toolbar: [
-            [{ 'header': [1, 2, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            ['link', 'image'],
-            ['clean']
-        ],
-    };
-
     return (
-        <div className="container py-4">
-            <div className="row justify-content-center">
-                <div className="col-md-8">
-                    <div className="card shadow">
-                        <div className="card-body">
-                            <h4 className="card-title text-center mb-4">
-                                <i className="fas fa-pen-nib me-2"></i> New Blog Post
-                            </h4>
+        <div className="min-h-screen bg-gradient-to-br from-transparent to-transparent flex items-center justify-center p-4">
+            <div className="w-full max-w-md">
+                {/* Decorative elements */}
+                <div className="absolute top-0 left-0 w-72 h-72 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl opacity-50"></div>
+                <div className="absolute bottom-0 right-0 w-72 h-72 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full translate-x-1/3 translate-y-1/3 blur-3xl opacity-50"></div>
 
-                            {error && <div className="alert alert-danger">{error}</div>}
+                {/* Main Card */}
+                <div className="relative bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
+                    {/* Gradient Header */}
+                    <div className="relative bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 p-8">
+                        <div className="text-center">
+                            <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-white/30">
+                                <FaBlog className="text-white text-4xl" />
+                            </div>
+                            <h1 className="text-4xl font-bold text-white mb-2">BlogSphere</h1>
+                            <p className="text-emerald-100 text-lg">Join our community of writers</p>
+                        </div>
 
-                            <form onSubmit={handleSubmit}>
-                                <div className="mb-3">
-                                    <label className="form-label">Title</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={title}
-                                        onChange={(e) => setTitle(e.target.value)}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="mb-3">
-                                    <label className="form-label">Content</label>
-                                    
-                                    <ReactQuill
-                                        ref={quillRef}
-                                        theme="snow"
-                                        value={content}
-                                        onChange={handleContentChange}
-                                        modules={modules}
-                                        placeholder="Write your blog content here..."
-                                        style={{ height: "200px", marginBottom: "50px" }}
-                                    />
-
-                                    {/* Suggestion box */}
-                                    {suggestion && (
-                                        <div className="alert alert-info mt-2 d-flex justify-content-between align-items-center">
-                                            <div>
-                                                <i className="fas fa-lightbulb me-2"></i>
-                                                Suggested next word: <strong>{suggestion}</strong>
-                                            </div>
-                                            <small className="text-muted">
-                                                Press <kbd>Tab</kbd> to accept
-                                            </small>
-                                        </div>
-                                    )}
-
-                                    <small className="text-muted d-block mt-2">
-                                        Word Count: {
-                                            getPlainText(content).trim().split(/\s+/).filter(word => word).length
-                                        } / 500 &nbsp; | &nbsp;
-                                        Letter Count: {
-                                            getPlainText(content).replace(/\s/g, "").length
-                                        }
-                                    </small>
-                                </div>
-
-                                <div className="mb-3">
-                                    <label className="form-label">Upload Images (Max 5)</label>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        multiple
-                                        className="form-control"
-                                        onChange={handleImageChange}
-                                    />
-                                    <div className="mt-2 d-flex flex-wrap gap-2">
-                                        {previews.map((src, idx) => (
-                                            <img
-                                                key={idx}
-                                                src={src}
-                                                alt={`Preview ${idx}`}
-                                                className="rounded"
-                                                style={{ maxHeight: "100px", maxWidth: "100px" }}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="d-grid">
-                                    <button type="submit" className="btn btn-primary" disabled={loading}>
-                                        {loading ? "Posting..." : <><i className="fas fa-upload me-2"></i>Post</>}
-                                    </button>
-                                </div>
-                            </form>
+                        {/* Decorative waves */}
+                        <div className="absolute -bottom-6 left-0 right-0">
+                            <svg viewBox="0 0 500 150" preserveAspectRatio="none" className="w-full h-12">
+                                <path d="M0,0 C150,200 350,0 500,100 L500,0 L0,0 Z" fill="white" fillOpacity="0.15"></path>
+                            </svg>
                         </div>
                     </div>
+
+                    {/* Form Section */}
+                    <div className="p-8">
+                        {/* Success Message */}
+                        {success && (
+                            <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl flex items-start space-x-3 animate-pulse">
+                                <FaCheck className="text-green-500 text-xl mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="text-green-700 font-medium">Registration successful! Redirecting to login...</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Error Message */}
+                        {errors.message && (
+                            <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-2xl flex items-start space-x-3 animate-pulse">
+                                <FaExclamationCircle className="text-red-500 text-xl mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="text-red-700 font-medium">{errors.message}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            {/* Username Field */}
+                            <div>
+                                <label className="block text-gray-700 font-medium mb-2">
+                                    <FaUser className="inline mr-2 text-gray-400" />
+                                    Username
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        name="username"
+                                        value={formData.username}
+                                        onChange={handleChange}
+                                        autoComplete="off"
+                                        required
+                                        className={`w-full px-4 py-3 pl-12 bg-gray-50 border-2 ${errors.username ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-200'
+                                            } rounded-xl transition-all duration-300 outline-none`}
+                                        placeholder="Choose a username"
+                                    />
+                                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+
+                                    </div>
+                                </div>
+                                {errors.username && (
+                                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                                        <FaExclamationCircle className="mr-1" /> {errors.username}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Email Field */}
+                            <div>
+                                <label className="block text-gray-700 font-medium mb-2">
+                                    <FaEnvelope className="inline mr-2 text-gray-400" />
+                                    Email Address
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        autoComplete="off"
+                                        required
+                                        className={`w-full px-4 py-3 pl-12 bg-gray-50 border-2 ${errors.email ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-200'
+                                            } rounded-xl transition-all duration-300 outline-none`}
+                                        placeholder="Enter your email"
+                                    />
+                                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+
+                                    </div>
+                                </div>
+                                {errors.email && (
+                                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                                        <FaExclamationCircle className="mr-1" /> {errors.email}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Password Field */}
+                            <div>
+                                <label className="block text-gray-700 font-medium mb-2">
+                                    <FaLock className="inline mr-2 text-gray-400" />
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword.password ? "text" : "password"}
+                                        name="password"
+                                        value={formData.password}
+                                        onChange={handleChange}
+                                        autoComplete="off"
+                                        required
+                                        className={`w-full px-4 py-3 pl-12 pr-12 bg-gray-50 border-2 ${errors.password ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-200'
+                                            } rounded-xl transition-all duration-300 outline-none`}
+                                        placeholder="Create a password"
+                                    />
+                                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => togglePasswordVisibility("password")}
+                                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        {showPassword.password ? <FaEyeSlash /> : <FaEye />}
+                                    </button>
+                                </div>
+                                {errors.password && (
+                                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                                        <FaExclamationCircle className="mr-1" /> {errors.password}
+                                    </p>
+                                )}
+                                <p className="mt-2 text-xs text-gray-500">
+                                    Password must be at least 6 characters long
+                                </p>
+                            </div>
+
+                            {/* Confirm Password Field */}
+                            <div>
+                                <label className="block text-gray-700 font-medium mb-2">
+                                    <FaLock className="inline mr-2 text-gray-400" />
+                                    Confirm Password
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword.confirmPassword ? "text" : "password"}
+                                        name="confirmPassword"
+                                        value={formData.confirmPassword}
+                                        onChange={handleChange}
+                                        autoComplete="off"
+                                        required
+                                        className={`w-full px-4 py-3 pl-12 pr-12 bg-gray-50 border-2 ${errors.confirmPassword ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-200'
+                                            } rounded-xl transition-all duration-300 outline-none`}
+                                        placeholder="Confirm your password"
+                                    />
+                                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => togglePasswordVisibility("confirmPassword")}
+                                        className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        {showPassword.confirmPassword ? <FaEyeSlash /> : <FaEye />}
+                                    </button>
+                                </div>
+                                {errors.confirmPassword && (
+                                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                                        <FaExclamationCircle className="mr-1" /> {errors.confirmPassword}
+                                    </p>
+                                )}
+                            </div>
+
+
+
+                            {/* Submit Button */}
+                            <button
+                                type="submit"
+                                disabled={isLoading || success}
+                                className={`w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300 ${(isLoading || success) ? 'opacity-80 cursor-not-allowed' : 'hover:from-green-600 hover:to-emerald-600'
+                                    }`}
+                            >
+                                {isLoading ? (
+                                    <div className="flex items-center justify-center space-x-2">
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Creating account...</span>
+                                    </div>
+                                ) : success ? (
+                                    <div className="flex items-center justify-center space-x-2">
+                                        <FaCheck />
+                                        <span>Success! Redirecting...</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center space-x-2">
+                                        <FaUserPlus />
+                                        <span>Create Account</span>
+                                    </div>
+                                )}
+                            </button>
+                        </form>
+
+                        {/* Divider */}
+                        <div className="my-8 relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-gray-300"></div>
+                            </div>
+                            <div className="relative flex justify-center text-sm">
+                                <span className="px-4 bg-white text-gray-500">Or sign up with</span>
+                            </div>
+                        </div>
+
+                        {/* Social Registration Buttons */}
+                        <div className="grid grid-cols-1 gap-3 mb-6">
+                            <button
+                                type="button"
+                                className="flex items-center justify-center space-x-2 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-all duration-300"
+                            >
+                                <i className="fab fa-google text-red-500"></i>
+                                <span className="font-medium">Sign up with Google</span>
+                            </button>
+                        </div>
+
+                        {/* Login Link */}
+                        <div className="text-center pt-4 border-t border-gray-200">
+                            <p className="text-gray-600">
+                                Already have an account?{" "}
+                                <Link
+                                    to="/login"
+                                    className="font-semibold text-green-600 hover:text-green-700 transition-colors"
+                                >
+                                    Sign in here
+                                </Link>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-8 text-center">
+                    <p className="text-gray-500 text-sm">
+                        By creating an account, you agree to our{" "}
+                        <a href="#" className="text-green-600 hover:text-green-700 transition-colors">
+                            Terms of Service
+                        </a>{" "}
+                        and{" "}
+                        <a href="#" className="text-green-600 hover:text-green-700 transition-colors">
+                            Privacy Policy
+                        </a>
+                    </p>
                 </div>
             </div>
         </div>
     );
 };
 
-export default AddPost;
+export default Registration;    

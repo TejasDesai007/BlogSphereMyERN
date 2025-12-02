@@ -1,100 +1,337 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
-import "bootstrap/dist/css/bootstrap.min.css";
-import "@fortawesome/fontawesome-free/css/all.min.css";
-import "./Navbar.css";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  FaHome,
+  FaPlus,
+  FaUserCircle,
+  FaSignInAlt,
+  FaUser,
+  FaCog,
+  FaSignOutAlt,
+  FaBookmark,
+  FaBell,
+  FaSearch,
+  FaMoon,
+  FaSun
+} from "react-icons/fa";
 
 const Navbar = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef();
-
-  const closeNavbar = () => {
-    const navbar = document.getElementById("navbarNav");
-    if (navbar.classList.contains("show")) {
-      navbar.classList.remove("show");
-    }
-  };
-
-  const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
+  const searchRef = useRef();
+  const navigate = useNavigate();
+  const user = JSON.parse(sessionStorage.getItem("user"));
 
   useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
       }
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setSearchOpen(false);
+      }
     };
+
+    window.addEventListener("scroll", handleScroll);
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => {
+      window.removeEventListener("scroll", handleScroll);
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
+  const handleLogout = () => {
+    sessionStorage.removeItem("user");
+    navigate("/login");
+  };
+
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-light shadow-sm sticky-top">
-      <div className="container-fluid">
-        {/* Navbar brand (hidden or optional now) */}
-        <Link className="navbar-brand d-lg-none" to="/">BlogSphere</Link>
-
-        {/* Toggler button */}
-        <button
-          className="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#navbarNav"
-          aria-controls="navbarNav"
-          aria-expanded="false"
-          aria-label="Toggle navigation"
-        >
-          <span className="navbar-toggler-icon"></span>
-        </button>
-
-        {/* Collapsible content */}
-        <div className="collapse navbar-collapse justify-content-center" id="navbarNav">
-          <ul className="navbar-nav d-flex flex-row align-items-center gap-3">
-
-            {/* Blog Icon (Clickable to Home) */}
-            <li className="nav-item">
-              <Link className="nav-link" to="/" onClick={closeNavbar} title="Home">
-                <i className="fas fa-blog fa-lg text-primary"></i>
-              </Link>
-            </li>
-
-            {/* Add Post */}
-            <li className="nav-item">
-              <Link className="nav-link" to="/add-post" onClick={closeNavbar} title="Add Post">
-                <i className="fas fa-plus-circle fa-lg text-success"></i>
-              </Link>
-            </li>
-
-            {/* User Dropdown */}
-            <li className="nav-item dropdown" ref={dropdownRef}>
-              <span
-                className="nav-link"
-                style={{ cursor: "pointer" }}
-                onClick={toggleDropdown}
+    <>
+      {/* Navigation Bar - Fixed with proper height */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 h-16 ${scrolled
+          ? "bg-white/95 backdrop-blur-lg shadow-xl py-2 dark:bg-gray-900/95 dark:shadow-gray-900/50"
+          : "bg-gradient-to-r from-blue-600/90 via-purple-600/90 to-pink-600/90 backdrop-blur-md py-3"
+        }`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+          <div className="flex items-center justify-between h-full">
+            {/* Logo/Brand */}
+            <div className="flex items-center space-x-3">
+              <Link
+                to="/"
+                className="flex items-center space-x-3 group"
               >
-                <i className="fas fa-user-circle fa-lg text-dark"></i>
-              </span>
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full blur-lg opacity-70 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="relative w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <i className={`fas fa-blog text-xl ${scrolled ? 'text-blue-600' : 'text-blue-500'}`}></i>
+                  </div>
+                </div>
+                <div className="hidden md:block">
+                  <h1 className={`text-xl font-bold bg-gradient-to-r ${scrolled ? 'from-blue-600 to-purple-600' : 'from-white to-blue-100'} bg-clip-text text-transparent`}>
+                    BlogSphere
+                  </h1>
+                </div>
+              </Link>
+            </div>
 
-              {dropdownOpen && (
-                <ul className="dropdown-menu show position-absolute mt-1" style={{ zIndex: 1000 }}>
-                  <li>
-                    <Link className="dropdown-item" to="/login" onClick={() => { closeNavbar(); setDropdownOpen(false); }}>
-                      <i className="fas fa-sign-in-alt me-2"></i> Login
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="dropdown-item" to="/profile" onClick={() => { closeNavbar(); setDropdownOpen(false); }}>
-                      <i className="fas fa-user me-2"></i> Profile
-                    </Link>
-                  </li>
-                </ul>
-              )}
-            </li>
-          </ul>
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center space-x-1">
+              {/* Search Bar */}
+              <div className="relative" ref={searchRef}>
+
+
+              </div>
+
+              {/* Add Post Button */}
+              <Link
+                to="/add-post"
+                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full hover:shadow-lg hover:scale-105 transition-all duration-300"
+              >
+                <FaPlus />
+                <span>New Post</span>
+              </Link>
+
+              {/* Notifications */}
+              <button className="relative p-2 rounded-full hover:bg-white/20 transition-all duration-300">
+                <FaBell className="text-white" />
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                  3
+                </span>
+              </button>
+
+              {/* Saved Posts */}
+
+
+              {/* Dark Mode Toggle */}
+
+
+              {/* User Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center space-x-2 p-1 rounded-full hover:bg-white/20 transition-all duration-300"
+                >
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 p-0.5">
+                    <div className="w-full h-full bg-white rounded-full flex items-center justify-center">
+                      <FaUserCircle className="text-2xl text-blue-600" />
+                    </div>
+                  </div>
+                  <span className="text-white font-medium hidden lg:block">
+                    {user ? user.username : "Guest"}
+                  </span>
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl overflow-hidden animate-slideDown">
+                    {/* Profile Header */}
+                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center">
+                          <FaUserCircle className="text-2xl text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-white font-semibold">{user ? user.username : "Guest"}</h3>
+                          <p className="text-blue-100 text-sm">{user ? user.email : "Login to continue"}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Menu Items */}
+                    <div className="p-2">
+                      {!user ? (
+                        <>
+                          <Link
+                            to="/login"
+                            className="flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 rounded-lg transition-colors"
+                            onClick={() => setDropdownOpen(false)}
+                          >
+                            <FaSignInAlt className="text-blue-500" />
+                            <span>Sign In</span>
+                          </Link>
+                          <Link
+                            to="/registration"
+                            className="flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 rounded-lg transition-colors"
+                            onClick={() => setDropdownOpen(false)}
+                          >
+                            <FaUser className="text-green-500" />
+                            <span>Create Account</span>
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <Link
+                            to="/profile"
+                            className="flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 rounded-lg transition-colors"
+                            onClick={() => setDropdownOpen(false)}
+                          >
+                            <FaUser className="text-blue-500" />
+                            <span>My Profile</span>
+                          </Link>
+                          
+                          
+                          <button
+                            onClick={() => {
+                              handleLogout();
+                              setDropdownOpen(false);
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                          >
+                            <FaSignOutAlt />
+                            <span>Logout</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-colors"
+            >
+              <div className="w-6 h-6 flex flex-col justify-center space-y-1">
+                <span className={`block w-6 h-0.5 bg-white transition-transform ${mobileMenuOpen ? 'rotate-45 translate-y-2' : ''}`}></span>
+                <span className={`block w-6 h-0.5 bg-white transition-opacity ${mobileMenuOpen ? 'opacity-0' : ''}`}></span>
+                <span className={`block w-6 h-0.5 bg-white transition-transform ${mobileMenuOpen ? '-rotate-45 -translate-y-2' : ''}`}></span>
+              </div>
+            </button>
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Spacer div to push content down */}
+      <div className="h-16"></div>
+
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 top-16 z-40 bg-gradient-to-b from-blue-600/95 to-purple-600/95 backdrop-blur-lg">
+          <div className="p-6 space-y-4 animate-slideDown mt-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search..."
+                className="w-full px-4 py-3 pl-10 bg-white/20 backdrop-blur-sm text-white rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
+              />
+              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70" />
+            </div>
+
+            {/* Mobile Menu Items */}
+            <div className="space-y-2">
+              {!user ? (
+                <>
+                  <Link
+                    to="/login"
+                    className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaSignInAlt className="text-white text-xl" />
+                    <span className="text-white font-medium">Sign In</span>
+                  </Link>
+                  <Link
+                    to="/registration"
+                    className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaUser className="text-white text-xl" />
+                    <span className="text-white font-medium">Create Account</span>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/add-post"
+                    className="flex items-center space-x-3 p-4 bg-gradient-to-r from-green-500/80 to-emerald-500/80 backdrop-blur-sm rounded-xl hover:scale-105 transition-transform"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaPlus className="text-white" />
+                    <span className="text-white font-medium">Create Post</span>
+                  </Link>
+                  <Link
+                    to="/profile"
+                    className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaUser className="text-white text-xl" />
+                    <span className="text-white font-medium">My Profile</span>
+                  </Link>
+                  <Link
+                    to="/saved"
+                    className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaBookmark className="text-white text-xl" />
+                    <span className="text-white font-medium">Saved Posts</span>
+                  </Link>
+                  <Link
+                    to="/settings"
+                    className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <FaCog className="text-white text-xl" />
+                    <span className="text-white font-medium">Settings</span>
+                  </Link>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center space-x-3 p-4 bg-red-500/80 backdrop-blur-sm rounded-xl hover:bg-red-600 transition-colors"
+                  >
+                    <FaSignOutAlt className="text-white" />
+                    <span className="text-white font-medium">Logout</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Dark Mode Toggle for Mobile */}
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="flex items-center space-x-3 p-4 bg-white/10 backdrop-blur-sm rounded-xl hover:bg-white/20 transition-colors w-full"
+            >
+              {darkMode ? (
+                <FaSun className="text-yellow-300 text-xl" />
+              ) : (
+                <FaMoon className="text-white text-xl" />
+              )}
+              <span className="text-white font-medium">
+                {darkMode ? "Light Mode" : "Dark Mode"}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add some custom styles for animations */}
+      <style jsx>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
+        }
+      `}</style>
+    </>
   );
 };
 

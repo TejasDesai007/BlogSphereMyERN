@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
-import { FaPlus, FaHeart, FaRegHeart, FaComment, FaBookmark, FaRegBookmark, FaEye, FaUserPlus, FaUserMinus } from "react-icons/fa";
-import 'bootstrap/dist/css/bootstrap.min.css';
+import { FaPlus, FaHeart, FaRegHeart, FaComment, FaBookmark, FaRegBookmark, FaUserPlus, FaUserMinus, FaSearch, FaTimes, FaSpinner, FaCheckCircle, FaExclamationCircle } from "react-icons/fa";
+//import ScrapedBlogs from './ScrappedBlogs';
 import * as bootstrap from 'bootstrap';
+
 window.bootstrap = bootstrap;
 
 export default function Homepage() {
   const [posts, setPosts] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [likes, setLikes] = useState({});
   const [userLikedPosts, setUserLikedPosts] = useState({});
   const [commentCounts, setCommentCounts] = useState({});
@@ -22,11 +24,18 @@ export default function Homepage() {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [searchTimeout, setSearchTimeout] = useState(null);
-  
+  const [modalInstance, setModalInstance] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeSource, setActiveSource] = useState("blogsphere");
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsHasMore, setCommentsHasMore] = useState(true);
+  const [commentsPage, setCommentsPage] = useState(1);
+  const commentsEndRef = useRef(null);
+
   const isMountedRef = useRef(true);
   const BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const loadingRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
   const navigate = useNavigate();
   const user = JSON.parse(sessionStorage.getItem("user"));
   const userID = user ? user.id : null;
@@ -34,12 +43,34 @@ export default function Homepage() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
     };
   }, []);
 
+  // Debounce search query
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebouncedSearchQuery(searchQuery);
+      }
+    }, 500);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
   const fetchPosts = useCallback(async (page = 1, search = "", reset = false) => {
     if (!isMountedRef.current) return;
-    
+
     if (page === 1) {
       setIsInitialLoading(true);
     } else {
@@ -58,7 +89,7 @@ export default function Homepage() {
       if (!isMountedRef.current) return;
 
       const { posts: newPosts, pagination } = response.data;
-      
+
       if (page === 1 || reset) {
         setPosts(newPosts);
       } else {
@@ -84,13 +115,12 @@ export default function Homepage() {
 
   const fetchInitialData = useCallback(async () => {
     if (!isMountedRef.current) return;
-    
+
     try {
       const response = await axios.get(`${BASE_URL}/api/posts/InitialData${userID ? `/${userID}` : ''}`);
-      
-      // Fixed typo: changed 'component' to 'current'
+
       if (!isMountedRef.current) return;
-      
+
       const { likesCount, commentsCount, likedPosts = [], savedPosts: userSaved = [] } = response.data;
 
       // Set likes count
@@ -121,7 +151,7 @@ export default function Homepage() {
 
       for (let authorId of uniqueAuthorIDs) {
         if (!isMountedRef.current) return;
-        
+
         try {
           const res = await axios.get(`${BASE_URL}/api/follows/check?followerId=${userID}&followedId=${authorId}`);
           followStatuses[authorId] = res.data.isFollowing;
@@ -139,6 +169,7 @@ export default function Homepage() {
     }
   }, [BASE_URL, userID]);
 
+  // Initialize component state
   useEffect(() => {
     setPosts([]);
     setCurrentPage(1);
@@ -153,51 +184,34 @@ export default function Homepage() {
     isMountedRef.current = true;
   }, []);
 
+  // Fetch posts when debounced search query changes
   useEffect(() => {
     if (!isMountedRef.current) return;
-    
+
     const initializeData = async () => {
       await Promise.all([
-        fetchPosts(1, searchQuery, true),
+        fetchPosts(1, debouncedSearchQuery, true),
         fetchInitialData()
       ]);
     };
 
     initializeData();
-  }, [fetchPosts, fetchInitialData, searchQuery]);
+  }, [debouncedSearchQuery, fetchPosts, fetchInitialData]);
 
+  // Fetch follow statuses when posts change
   useEffect(() => {
     if (posts.length > 0) {
       fetchFollowStatuses(posts);
     }
   }, [posts, fetchFollowStatuses]);
 
-  useEffect(() => {
-    if (searchTimeout) {
-      clearTimeout(searchTimeout);
-    }
-
-    setSearchTimeout(setTimeout(() => {
-      if (isMountedRef.current) {
-        setCurrentPage(1);
-        setHasNextPage(true);
-        fetchPosts(1, searchQuery, true);
-      }
-    }, 500));
-
-    return () => {
-      if (searchTimeout) {
-        clearTimeout(searchTimeout);
-      }
-    };
-  }, [searchQuery, fetchPosts]);
-
+  // Infinite scroll observer for posts
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const target = entries[0];
         if (target.isIntersecting && hasNextPage && !isLoadingMore && !isInitialLoading && isMountedRef.current) {
-          fetchPosts(currentPage + 1, searchQuery, false);
+          fetchPosts(currentPage + 1, debouncedSearchQuery, false);
         }
       },
       {
@@ -215,7 +229,15 @@ export default function Homepage() {
         observer.unobserve(loadingRef.current);
       }
     };
-  }, [hasNextPage, isLoadingMore, isInitialLoading, currentPage, searchQuery, fetchPosts]);
+  }, [hasNextPage, isLoadingMore, isInitialLoading, currentPage, debouncedSearchQuery, fetchPosts]);
+
+  // Handle card click - navigate to ViewPost
+  const handleCardClick = (postID, event) => {
+    if (event.target.closest('button') || event.target.closest('a') || event.target.closest('.carousel-control-prev') || event.target.closest('.carousel-control-next')) {
+      return;
+    }
+    navigate(`/ViewPost?postID=${postID}`);
+  };
 
   const handleFollow = async (followedId) => {
     if (!userID) {
@@ -224,7 +246,7 @@ export default function Homepage() {
     }
 
     if (loading[followedId]) return;
-    
+
     setLoading(prev => ({ ...prev, [followedId]: true }));
 
     try {
@@ -232,7 +254,7 @@ export default function Homepage() {
         followerId: userID,
         followedId,
       });
-      
+
       if (isMountedRef.current) {
         setFollowMap(prev => ({ ...prev, [followedId]: true }));
       }
@@ -253,7 +275,7 @@ export default function Homepage() {
     }
 
     if (loading[followedId]) return;
-    
+
     setLoading(prev => ({ ...prev, [followedId]: true }));
 
     try {
@@ -263,7 +285,7 @@ export default function Homepage() {
           followedId,
         },
       });
-      
+
       if (isMountedRef.current) {
         setFollowMap(prev => ({ ...prev, [followedId]: false }));
       }
@@ -359,318 +381,505 @@ export default function Homepage() {
     }
   };
 
-  const fetchComments = async (postID) => {
-    if (!userID) {
-      navigate('/login');
+  // Modal setup with infinite scroll for comments
+  useEffect(() => {
+    const modalElement = document.getElementById('commentsModal');
+    if (modalElement) {
+      const instance = new bootstrap.Modal(modalElement);
+      setModalInstance(instance);
+
+      const handleShow = () => setIsModalOpen(true);
+      const handleHide = () => {
+        setIsModalOpen(false);
+        setComments([]);
+        setShowCommentsPostID(null);
+        setNewComment("");
+        setCommentsPage(1);
+        setCommentsHasMore(true);
+      };
+
+      modalElement.addEventListener('shown.bs.modal', handleShow);
+      modalElement.addEventListener('hidden.bs.modal', handleHide);
+
+      return () => {
+        modalElement.removeEventListener('shown.bs.modal', handleShow);
+        modalElement.removeEventListener('hidden.bs.modal', handleHide);
+        instance.dispose();
+      };
+    }
+  }, []);
+
+  // Infinite scroll for comments
+  useEffect(() => {
+    if (!isModalOpen || !showCommentsPostID || commentsLoading || !commentsHasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && !commentsLoading && commentsHasMore) {
+          fetchComments(showCommentsPostID, commentsPage + 1);
+        }
+      },
+      {
+        threshold: 0.1,
+        rootMargin: '100px'
+      }
+    );
+
+    if (commentsEndRef.current) {
+      observer.observe(commentsEndRef.current);
+    }
+
+    return () => {
+      if (commentsEndRef.current) {
+        observer.unobserve(commentsEndRef.current);
+      }
+    };
+  }, [isModalOpen, showCommentsPostID, commentsPage, commentsLoading, commentsHasMore]);
+
+  const fetchComments = async (postID, page = 1) => {
+    if (!userID || commentsLoading) {
       return;
     }
+
+    setCommentsLoading(true);
+
     try {
-      const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`);
-      if (isMountedRef.current) {
-        setComments(res.data);
+      const res = await axios.get(`${BASE_URL}/api/posts/comments/${postID}`, {
+        params: {
+          page,
+          limit: 10
+        }
+      });
+
+      if (!isMountedRef.current) return;
+
+      const { comments: newComments, hasMore } = res.data;
+
+      setComments(prev => page === 1 ? newComments : [...prev, ...newComments]);
+      setCommentsHasMore(hasMore);
+      setCommentsPage(page);
+      if (page === 1) {
         setShowCommentsPostID(postID);
+        modalInstance?.show();
       }
     } catch (err) {
       console.error("Error fetching comments:", err);
+      if (page === 1) {
+        alert("Failed to load comments. Please try again.");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setCommentsLoading(false);
+      }
     }
   };
 
   const handleCommentSubmit = async () => {
-    if (!userID || newComment.trim() === "") return;
+    if (!userID || !showCommentsPostID || newComment.trim() === "") return;
 
     try {
       const response = await axios.post(`${BASE_URL}/api/posts/comments`, {
         postID: showCommentsPostID,
         userID,
-        comment: newComment
+        comment: newComment.trim()
       });
-      
+
       if (isMountedRef.current) {
         setNewComment("");
         setCommentCounts(prev => ({
           ...prev,
-          [showCommentsPostID]: response.data.count
+          [showCommentsPostID]: (prev[showCommentsPostID] || 0) + 1
         }));
-        fetchComments(showCommentsPostID);
+        // Refresh comments from first page
+        fetchComments(showCommentsPostID, 1);
       }
-
     } catch (err) {
       console.error("Error posting comment:", err);
+      alert("Failed to post comment. Please try again.");
     }
   };
 
+  const handleSearchInputChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const handleQuickSearch = (query) => {
+    setSearchQuery(query);
+  };
+
   const LoadingSpinner = () => (
-    <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "400px" }}>
+    <div className="min-h-[400px] flex items-center justify-center">
       <div className="text-center">
-        <div className="spinner-border text-primary mb-3" role="status" style={{ width: "3rem", height: "3rem" }}>
-          <span className="visually-hidden">Loading...</span>
-        </div>
-        <h5 className="text-muted">Loading posts...</h5>
-        <p className="text-muted small">Please wait while we fetch the latest content</p>
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <h5 className="text-gray-600 text-lg font-medium">Loading posts...</h5>
+        <p className="text-gray-500 text-sm mt-1">Please wait while we fetch the latest content</p>
       </div>
     </div>
   );
 
   const LoadMoreSpinner = () => (
-    <div className="d-flex justify-content-center my-4">
-      <div className="spinner-border text-primary" role="status">
-        <span className="visually-hidden">Loading more posts...</span>
-      </div>
+    <div className="flex justify-center my-8">
+      <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
+
+  const CommentsLoadingSpinner = () => (
+    <div className="flex justify-center my-4">
+      <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
     </div>
   );
 
   return (
-    <>
-      <h1 className="text-center mb-4"><i className="fas fa-blog"></i></h1>
-      
-      {/* Search Input */}
-      <input
-        type="text"
-        className="form-control mb-4"
-        placeholder="Search posts..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        disabled={isInitialLoading}
-      />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4 md:p-6">
+      {/* Header */}
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-10">
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            BlogSphere
+          </h1>
+          <p className="text-gray-600 text-lg">Discover, share, and connect with amazing content</p>
+        </div>
 
-      {/* Initial Loading */}
-      {isInitialLoading ? (
-        <LoadingSpinner />
-      ) : (
-        <>
-          {/* Posts Grid */}
-          <div className="row">
-            {posts.map((post) => (
-              <div className="col-lg-4 col-md-6 mb-4" key={post._id}>
-                <div className="card h-100">
-                  {post.images.length > 0 && (
-                    <div id={`carousel${post._id}`} className="carousel slide" data-bs-ride="carousel">
-                      <div className="carousel-inner">
-                        {post.images.map((imagePath, index) => (
-                          <div className={`carousel-item ${index === 0 ? "active" : ""}`} key={index}>
-                            <img
-                              src={imagePath}
-                              className="d-block w-100"
-                              alt="Post"
-                              style={{ height: "200px", objectFit: "cover" }}
-                            />
+        {/* Search Bar */}
+        <div className="mb-10 max-w-2xl mx-auto">
+          <div className="relative">
+            <FaSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              className="w-full pl-12 pr-12 py-4 text-lg rounded-2xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 shadow-lg"
+              placeholder="Search posts by title, tags, or username..."
+              value={searchQuery}
+              onChange={handleSearchInputChange}
+              disabled={isInitialLoading}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <FaTimes />
+              </button>
+            )}
+          </div>
+        </div>
+
+
+
+        {activeSource === "blogsphere" ? (
+          <>
+            {/* Original posts feed */}
+            {isInitialLoading ? (
+              <LoadingSpinner />
+            ) : (
+              <div className="space-y-8">
+                {/* Posts Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {posts.map((post) => (
+                    <div className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border border-gray-100"
+                      onClick={(e) => handleCardClick(post._id, e)}
+                    >
+                      {/* Image Carousel */}
+                      {/* Image Carousel */}
+                      {post.images && post.images.length > 0 && (
+                        <div className="relative h-56 overflow-hidden">
+                          <div id={`carousel${post._id}`} className="carousel slide h-full">
+                            <div className="carousel-inner h-full">
+                              {post.images.map((imagePath, index) => (
+                                <div
+                                  className={`carousel-item h-full ${index === 0 ? "active" : ""}`}
+                                  key={index}
+                                >
+                                  <img
+                                    src={imagePath}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    alt="Post"
+                                  />
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                      {post.images.length > 1 && (
-                        <>
-                          <button className="carousel-control-prev" type="button" data-bs-target={`#carousel${post._id}`} data-bs-slide="prev">
-                            <span className="carousel-control-prev-icon"></span>
-                          </button>
-                          <button className="carousel-control-next" type="button" data-bs-target={`#carousel${post._id}`} data-bs-slide="next">
-                            <span className="carousel-control-next-icon"></span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
 
-                  <div className="card-body d-flex flex-column">
-                    <h5 className="card-title">{post.title}</h5>
-                    <h6 className="card-subtitle mb-2 text-muted d-flex align-items-center justify-content-between">
-                      <span>
-                        By <Link
-                          to={`/profile/${post.user._id}`}
-                          style={{
-                            background: "linear-gradient(to right, #667eea, #764ba2)",
-                            color: "white",
-                            padding: "0px 4px",
-                            borderRadius: "5px",
-                            textDecoration: "none"
-                          }}
-                        >
-                          {post.user.username}
-                        </Link> on {new Date(post.publishedAt).toLocaleDateString()}
-                      </span>
-                      {user && user.id !== post.user._id && (
-                        <span className="ms-2">
-                          {followMap[post.user._id] ? (
-                            <button 
-                              className="btn btn-sm" 
-                              onClick={() => handleUnfollow(post.user._id)}
+                          {/* Carousel Controls - Fixed positioning */}
+                          {post.images.length > 1 && (
+                            <>
+                              <button
+                                className="carousel-control-prev absolute left-2 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-2 w-10 h-10 flex items-center justify-center transition-colors z-10"
+                                type="button"
+                                data-bs-target={`#carousel${post._id}`}
+                                data-bs-slide="prev"
+                              >
+                                <span className="carousel-control-prev-icon w-4 h-4"></span>
+                              </button>
+                              <button
+                                className="carousel-control-next absolute right-2 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-2 w-10 h-10 flex items-center justify-center transition-colors z-10"
+                                type="button"
+                                data-bs-target={`#carousel${post._id}`}
+                                data-bs-slide="next"
+                              >
+                                <span className="carousel-control-next-icon w-4 h-4"></span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Card Content */}
+                      <div className="p-6">
+                        {/* Title with Save Button */}
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-xl font-bold text-gray-800 line-clamp-2 flex-1 mr-4">
+                            {post.title}
+                          </h3>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSave(post._id);
+                            }}
+                            className="p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full hover:from-blue-100 hover:to-purple-100 transition-all duration-300 shadow-sm hover:shadow-md"
+                            title={savedPosts[post._id] ? "Unsave post" : "Save post"}
+                          >
+                            {savedPosts[post._id] ? (
+                              <FaBookmark className="text-blue-600 text-lg" />
+                            ) : (
+                              <FaRegBookmark className="text-gray-600 text-lg" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Tags */}
+                        {post.tags && post.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {post.tags.map((tag, index) => (
+                              <span
+                                key={index}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuickSearch(tag);
+                                }}
+                                className="px-3 py-1 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 rounded-full text-sm font-medium hover:from-blue-100 hover:to-purple-100 transition-colors cursor-pointer border border-blue-100"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Author and Date */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="flex flex-col">
+                              <span className="text-sm text-gray-500">By</span>
+                              <Link
+                                to={`/profile/${post.user._id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-gray-800 font-semibold hover:text-blue-600 transition-colors"
+                              >
+                                {post.user.username}
+                              </Link>
+                            </div>
+                            <span className="text-gray-400">•</span>
+                            <span className="text-sm text-gray-500">
+                              {new Date(post.publishedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          {/* Follow Button */}
+                          {user && user.id !== post.user._id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                followMap[post.user._id]
+                                  ? handleUnfollow(post.user._id)
+                                  : handleFollow(post.user._id);
+                              }}
                               disabled={loading[post.user._id]}
-                              title="Unfollow"
+                              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 transform hover:scale-105 ${followMap[post.user._id]
+                                ? "bg-gradient-to-r from-red-50 to-pink-50 text-red-600 border border-red-200 hover:from-red-100 hover:to-pink-100"
+                                : "bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 border border-blue-200 hover:from-blue-100 hover:to-purple-100"
+                                }`}
                             >
                               {loading[post.user._id] ? (
-                                <i className="fas fa-spinner fa-spin"></i>
+                                <FaSpinner className="animate-spin inline mr-2" />
+                              ) : followMap[post.user._id] ? (
+                                <FaUserMinus className="inline mr-2" />
                               ) : (
-                                <FaUserMinus />
+                                <FaUserPlus className="inline mr-2" />
                               )}
-                            </button>
-                          ) : (
-                            <button 
-                              className="btn btn-sm" 
-                              onClick={() => handleFollow(post.user._id)}
-                              disabled={loading[post.user._id]}
-                              title="Follow"
-                            >
-                              {loading[post.user._id] ? (
-                                <i className="fas fa-spinner fa-spin"></i>
-                              ) : (
-                                <FaUserPlus />
-                              )}
+                              {followMap[post.user._id] ? "Following" : "Follow"}
                             </button>
                           )}
-                        </span>
-                      )}
-                    </h6>
+                        </div>
 
-                    <div className="mt-auto d-flex justify-content-between align-items-center">
-                      <button
-                        className="btn px-3 py-1 text-white border-0"
-                        onClick={() => handleLike(post._id)}
-                        style={{
-                          backgroundColor: userLikedPosts[post._id] ? "#dc3545" : "#f0f0f0",
-                          color: userLikedPosts[post._id] ? "white" : "#dc3545"
-                        }}
-                        title="Like"
-                      >
-                        {userLikedPosts[post._id] ? <FaHeart /> : <FaRegHeart />} {likes[post._id] || 0}
-                      </button>
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                          {/* Like Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLike(post._id);
+                            }}
+                            className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all duration-300 ${userLikedPosts[post._id]
+                              ? "bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg transform hover:scale-105"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                              }`}
+                          >
+                            {userLikedPosts[post._id] ? (
+                              <FaHeart className="text-white" />
+                            ) : (
+                              <FaRegHeart className="text-red-500" />
+                            )}
+                            <span className="font-semibold">{likes[post._id] || 0}</span>
+                            
+                          </button>
 
-                      <button 
-                        className="btn btn-sm ms-2" 
-                        onClick={() => fetchComments(post._id)}
-                        title="Comments"
-                      >
-                        <FaComment /> {commentCounts[post._id] || 0}
-                      </button>
-
-                      <button 
-                        className="btn px-3 py-1 ms-2" 
-                        onClick={() => handleSave(post._id)}
-                        title={savedPosts[post._id] ? "Unsave post" : "Save post"}
-                      >
-                        {savedPosts[post._id] ? <FaBookmark /> : <FaRegBookmark />}
-                      </button>
-
-                      <Link
-                        to={`/ViewPost?postID=${post._id}`}
-                        className="btn btn-sm ms-2"
-                        style={{
-                          background: "linear-gradient(to right, #36d1dc, #5b86e5)",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "5px",
-                          padding: "5px 10px",
-                          textDecoration: "none",
-                        }}
-                        title="View post"
-                      >
-                        <FaEye />
-                      </Link>
+                          {/* Comments Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fetchComments(post._id, 1);
+                            }}
+                            className="flex items-center space-x-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 hover:from-blue-100 hover:to-purple-100 transition-all duration-300 transform hover:scale-105"
+                          >
+                            <FaComment />
+                            <span className="font-semibold">{commentCounts[post._id] || 0}</span>
+                            <span>Comments</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
 
-          {/* Load More Indicator */}
-          {hasNextPage && (
-            <div ref={loadingRef}>
-              {isLoadingMore && <LoadMoreSpinner />}
-            </div>
-          )}
-
-          {/* No Posts Message */}
-          {posts.length === 0 && !isInitialLoading && (
-            <div className="col-12">
-              <div className="alert alert-warning text-center">
-                <i className="fas fa-search me-2"></i>
-                {searchQuery ? 
-                  `No posts found matching "${searchQuery}". Try different keywords.` : 
-                  "No posts available at the moment."
-                }
-              </div>
-            </div>
-          )}
-
-          {/* End of Posts Message */}
-          {posts.length > 0 && !hasNextPage && (
-            <div className="col-12">
-              <div className="alert alert-info text-center">
-                <i className="fas fa-check-circle me-2"></i>
-                You've reached the end! No more posts to load.
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Floating Add Post Button */}
-      <button 
-        onClick={() => navigate('/add-post')}
-        style={{
-          position: 'fixed',
-          bottom: '30px',
-          right: '30px',
-          width: '60px',
-          height: '60px',
-          borderRadius: '50%',
-          backgroundColor: '#007bff',
-          color: 'white',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          fontSize: '24px',
-          boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-          cursor: 'pointer',
-          zIndex: 1000,
-          border: 'none',
-          outline: 'none',
-          transition: 'all 0.3s ease',
-        }}
-        className="hover-scale"
-        title="Create new post"
-      >
-        <FaPlus />
-      </button>
-
-      {/* Comments Modal */}
-      {showCommentsPostID && (
-        <div className="modal-backdrop" style={{
-          position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
-          backgroundColor: "rgba(0, 0, 0, 0.5)", zIndex: 1040
-        }}
-          onClick={() => setShowCommentsPostID(null)}
-        >
-          <div className="modal-dialog modal-lg" style={{ margin: "10% auto", zIndex: 1050 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Comments</h5>
-                <button className="btn-close" onClick={() => setShowCommentsPostID(null)}></button>
-              </div>
-              <div className="modal-body">
-                {comments.length > 0 ? (
-                  <ul className="list-group mb-3">
-                    {comments.map((c, i) => (
-                      <li className="list-group-item mt-2" key={i}>
-                        <strong>{c.user?.username || c.username || "Anonymous"}</strong>: {c.content}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>No comments yet.</p>
+                {/* Load More Indicator */}
+                {hasNextPage && (
+                  <div ref={loadingRef} className="mt-8">
+                    {isLoadingMore && <LoadMoreSpinner />}
+                  </div>
                 )}
-                <textarea
-                  className="form-control mb-2"
-                  rows="3"
-                  placeholder="Write a comment..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                ></textarea>
-                <button className="btn btn-primary" onClick={handleCommentSubmit}>Submit</button>
+
+                {/* No Posts Message */}
+                {posts.length === 0 && !isInitialLoading && (
+                  <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-8 text-center shadow-lg">
+                    <FaExclamationCircle className="text-5xl text-yellow-500 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                      {debouncedSearchQuery ? "No Results Found" : "No Posts Available"}
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                      {debouncedSearchQuery
+                        ? `We couldn't find any posts matching "${debouncedSearchQuery}"`
+                        : "Be the first to create a post and share your thoughts!"}
+                    </p>
+                    <button
+                      onClick={() => debouncedSearchQuery && setSearchQuery("")}
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-semibold hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                    >
+                      {debouncedSearchQuery ? "Clear Search" : "Create Post"}
+                    </button>
+                  </div>
+                )}
+
+                {/* End of Posts Message */}
+                {posts.length > 0 && !hasNextPage && (
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-8 text-center shadow-lg">
+                    <FaCheckCircle className="text-5xl text-green-500 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">You've reached the end!</h3>
+                    <p className="text-gray-600">You've seen all available posts. Check back later for more content!</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <ScrapedBlogs source={activeSource} />
+        )}
+
+        {/* Comments Modal */}
+        <div className="modal fade" id="commentsModal" tabIndex="-1" aria-labelledby="commentsModalLabel" aria-hidden="true">
+          <div className="modal-dialog modal-dialog-scrollable max-w-lg mx-auto">
+            <div className="modal-content rounded-2xl border-0 shadow-2xl overflow-hidden">
+              <div className="modal-header bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
+                <h5 className="modal-title text-xl font-bold">
+                  {comments.length > 0 ? `Comments (${comments.length})` : 'Comments'}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  data-bs-dismiss="modal"
+                  aria-label="Close"
+                  onClick={() => modalInstance?.hide()}
+                ></button>
+              </div>
+              <div className="modal-body p-6">
+                {comments.length === 0 && !commentsLoading ? (
+                  <div className="text-center py-8">
+                    <FaComment className="text-5xl text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500 text-lg">No comments yet. Be the first to comment!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    {comments.map((comment, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-gray-50 rounded-xl p-4 hover:bg-white transition-colors duration-300 border border-gray-100"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                              {comment.user?.username?.charAt(0)?.toUpperCase() || 'A'}
+                            </div>
+                            <div>
+                              <strong className="text-gray-800">{comment.user?.username || 'Anonymous'}</strong>
+                              <p className="text-gray-500 text-sm">
+                                {new Date(comment.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-gray-700 leading-relaxed">{comment.content}</p>
+                      </div>
+                    ))}
+                    {commentsLoading && <CommentsLoadingSpinner />}
+                    {!commentsHasMore && comments.length > 0 && (
+                      <div className="text-center text-gray-500 py-4 border-t border-gray-200">
+                        No more comments to load
+                      </div>
+                    )}
+                    <div ref={commentsEndRef} className="h-4" />
+                  </div>
+                )}
+
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <textarea
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 resize-none"
+                    rows="4"
+                    placeholder="Add a thoughtful comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.value)}
+                    disabled={!isModalOpen}
+                  ></textarea>
+                  <button
+                    className="w-full mt-4 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleCommentSubmit}
+                    disabled={newComment.trim() === "" || !isModalOpen}
+                  >
+                    Post Comment
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
-    </>
+
+        {/* Floating Add Post Button */}
+        <button
+          onClick={() => navigate('/add-post')}
+          className="fixed bottom-8 right-8 w-16 h-16 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white flex items-center justify-center shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 z-50"
+          title="Create new post"
+        >
+          <FaPlus className="text-2xl" />
+        </button>
+      </div>
+    </div>
   );
 }
