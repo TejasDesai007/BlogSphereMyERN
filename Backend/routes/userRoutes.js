@@ -1,9 +1,9 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const User = require("../models/User"); // Assuming this path
+const User = require("../models/User");
+const Post = require("../models/Post");
+const Follow = require("../models/Follow"); // Make sure this line exists
 const router = express.Router();
-const Post = require("../models/Post"); // ✅ Add this line
-
 
 // Register User
 router.post("/register", async (req, res) => {
@@ -96,6 +96,7 @@ router.post("/logout", (req, res) => {
 });
 
 // Get user profile
+// Get user profile
 router.get("/profile/:userId", async (req, res) => {
     try {
         const user = await User.findById(req.params.userId).lean();
@@ -104,17 +105,25 @@ router.get("/profile/:userId", async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        // Replace this with actual post count from posts collection
-        const postCount = await Post.countDocuments({ userId: user._id }); // You must define Post model for this
+        // Get post count - IMPORTANT: Use 'user' field not 'userId'
+        const postCount = await Post.countDocuments({ user: user._id });
+
+        // Get following count (users this user follows)
+        const followingCount = await Follow.countDocuments({ follower: user._id });
+
+        // Get followers count (users who follow this user)
+        const followersCount = await Follow.countDocuments({ followed: user._id });
 
         res.status(200).json({
             ...user,
-            postCount
+            postCount,
+            followingCount,
+            followersCount
         });
     } catch (error) {
         console.error("Error fetching user profile:", error);
         res.status(500).json({ message: "Server error!" });
     }
-});
+}); 
 
 module.exports = router;
