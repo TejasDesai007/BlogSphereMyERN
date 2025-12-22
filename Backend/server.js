@@ -11,6 +11,7 @@ dotenv.config(); // Load .env variables
 const userRoutes = require("./routes/userRoutes");
 const postRoutes = require("./routes/postRoutes");
 const followRoutes = require("./routes/followRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const blogScraper = require('./routes/blogScraper');
 
 const db = require("./config/db");
@@ -70,6 +71,7 @@ db();
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/follows", followRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use('/api/blogs', blogScraper);
 
 app.get("/", (req, res) => {

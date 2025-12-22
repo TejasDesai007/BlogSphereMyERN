@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import {
   FaHome,
@@ -21,10 +22,16 @@ const Navbar = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const dropdownRef = useRef();
   const searchRef = useRef();
+  const notificationsRef = useRef();
   const navigate = useNavigate();
   const user = JSON.parse(sessionStorage.getItem("user"));
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -38,6 +45,9 @@ const Navbar = () => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setSearchOpen(false);
       }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
     };
 
     window.addEventListener("scroll", handleScroll);
@@ -48,6 +58,44 @@ const Navbar = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    setNotificationsLoading(true);
+    try {
+      const res = await axios.get(`${BASE_URL}/api/notifications/${user.id}`);
+      setNotifications(res.data.notifications || []);
+      setUnreadCount(res.data.unreadCount || 0);
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleNotificationsToggle = async () => {
+    if (!user) return;
+    const willOpen = !notificationsOpen;
+    setNotificationsOpen(willOpen);
+    if (willOpen) {
+      await fetchNotifications();
+      try {
+        await axios.post(`${BASE_URL}/api/notifications/mark-read`, {
+          userId: user.id,
+        });
+        setUnreadCount(0);
+      } catch (err) {
+        console.error("Error marking notifications as read:", err);
+      }
+    }
+  };
 
   const handleLogout = () => {
     sessionStorage.removeItem("user");
@@ -101,12 +149,55 @@ const Navbar = () => {
               </Link>
 
               {/* Notifications */}
-              <button className="relative p-2 rounded-full hover:bg-white/20 transition-all duration-300">
-                <FaBell className="text-white" />
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                  3
-                </span>
-              </button>
+              {user && (
+                <div className="relative" ref={notificationsRef}>
+                  <button
+                    className="relative p-2 rounded-full hover:bg-white/20 transition-all duration-300"
+                    onClick={handleNotificationsToggle}
+                  >
+                    <FaBell className="text-white" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl overflow-hidden animate-slideDown z-50">
+                      <div className="bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-3 text-white flex items-center justify-between">
+                        <span className="font-semibold">Notifications</span>
+                        {notificationsLoading && (
+                          <span className="text-xs opacity-80">Loading...</span>
+                        )}
+                      </div>
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500 text-sm">
+                            No notifications yet.
+                          </div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div
+                              key={n._id}
+                              className={`px-4 py-3 text-sm border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-start ${
+                                !n.isRead ? "bg-blue-50/70" : "bg-white"
+                              }`}
+                            >
+                              <div>
+                                <p className="text-gray-800">{n.message}</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {new Date(n.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Saved Posts */}
 

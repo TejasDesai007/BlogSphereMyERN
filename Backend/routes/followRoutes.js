@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Follow = require("../models/Follow");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const mongoose = require("mongoose");
 
 // ✅ Check follow status
@@ -50,6 +51,19 @@ router.post("/", async (req, res) => {
 
     const follow = new Follow({ follower: followerId, followed: followedId });
     await follow.save();
+
+    // Create follow notification for followed user
+    try {
+      const actor = await User.findById(followerId).select("username");
+      await Notification.create({
+        user: followedId,
+        actor: followerId,
+        type: "follow",
+        message: `${actor?.username || "Someone"} started following you.`,
+      });
+    } catch (notifyErr) {
+      console.error("Error creating follow notification:", notifyErr);
+    }
 
     res.status(201).json({ message: "Followed successfully" });
   } catch (err) {

@@ -7,6 +7,8 @@ const Post = require('../models/Post');
 const Like = require('../models/Like');
 const Comment = require('../models/Comment');
 const SavedPost = require('../models/SavedPost');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -388,6 +390,23 @@ router.post('/like', async (req, res) => {
   try {
     await Like.create({ post: postID, user: userID });
 
+    // Create notification for post author (if not liking own post)
+    try {
+      const post = await Post.findById(postID).select('user');
+      if (post && post.user.toString() !== userID) {
+        const actor = await User.findById(userID).select('username');
+        await Notification.create({
+          user: post.user,
+          actor: userID,
+          type: 'like',
+          post: postID,
+          message: `${actor?.username || 'Someone'} liked your post.`
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error creating like notification:', notifyErr);
+    }
+
     // Return updated count
     const count = await Like.countDocuments({ post: postID });
     res.json({ message: 'Post liked', count });
@@ -469,6 +488,23 @@ router.post('/comments', async (req, res) => {
 
   const c = await Comment.create({ post: postID, user: userID, content: comment });
 
+  // Create notification for post author (if not commenting on own post)
+  try {
+    const post = await Post.findById(postID).select('user');
+    if (post && post.user.toString() !== userID) {
+      const actor = await User.findById(userID).select('username');
+      await Notification.create({
+        user: post.user,
+        actor: userID,
+        type: 'comment',
+        post: postID,
+        message: `${actor?.username || 'Someone'} commented on your post.`
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Error creating comment notification:', notifyErr);
+  }
+
   // Return updated count
   const count = await Comment.countDocuments({ post: postID });
   res.json({ message: 'Comment added', commentId: c._id, count });
@@ -478,6 +514,25 @@ router.post('/comments', async (req, res) => {
 router.post('/savepost', async (req, res) => {
   try {
     await SavedPost.create({ post: req.body.postID, user: req.body.userID });
+
+    // Optional: notify post author that someone saved their post
+    try {
+      const { postID, userID } = req.body;
+      const post = await Post.findById(postID).select('user');
+      if (post && post.user.toString() !== userID) {
+        const actor = await User.findById(userID).select('username');
+        await Notification.create({
+          user: post.user,
+          actor: userID,
+          type: 'save',
+          post: postID,
+          message: `${actor?.username || 'Someone'} saved your post.`
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error creating save notification:', notifyErr);
+    }
+
     res.json({ message: 'Post saved' });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ message: 'Already saved' });

@@ -1,9 +1,17 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
-import { useNavigate, Link } from "react-router-dom";
-import { FaPlus, FaHeart, FaRegHeart, FaComment, FaBookmark, FaRegBookmark, FaUserPlus, FaUserMinus, FaSearch, FaTimes, FaSpinner, FaCheckCircle, FaExclamationCircle } from "react-icons/fa";
-//import ScrapedBlogs from './ScrappedBlogs';
-import * as bootstrap from 'bootstrap';
+import { useNavigate } from "react-router-dom";
+import {
+  FaPlus,
+  FaSearch,
+  FaTimes,
+  FaCheckCircle,
+  FaExclamationCircle,
+} from "react-icons/fa";
+// import ScrapedBlogs from './ScrappedBlogs';
+import * as bootstrap from "bootstrap";
+import PostCard from "./components/home/PostCard";
+import CommentsModal from "./components/home/CommentsModal";
 
 window.bootstrap = bootstrap;
 
@@ -279,7 +287,7 @@ export default function Homepage() {
     setLoading(prev => ({ ...prev, [followedId]: true }));
 
     try {
-      await axios.delete(`${BASE_URL}/api/follow`, {
+      await axios.delete(`${BASE_URL}/api/follows`, {
         data: {
           followerId: userID,
           followedId,
@@ -576,178 +584,24 @@ export default function Homepage() {
                 {/* Posts Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {posts.map((post) => (
-                    <div className="group bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border border-gray-100"
-                      onClick={(e) => handleCardClick(post._id, e)}
-                    >
-                      {/* Image Carousel */}
-                      {/* Image Carousel */}
-                      {post.images && post.images.length > 0 && (
-                        <div className="relative h-56 overflow-hidden">
-                          <div id={`carousel${post._id}`} className="carousel slide h-full">
-                            <div className="carousel-inner h-full">
-                              {post.images.map((imagePath, index) => (
-                                <div
-                                  className={`carousel-item h-full ${index === 0 ? "active" : ""}`}
-                                  key={index}
-                                >
-                                  <img
-                                    src={imagePath}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                    alt="Post"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Carousel Controls - Fixed positioning */}
-                          {post.images.length > 1 && (
-                            <>
-                              <button
-                                className="carousel-control-prev absolute left-2 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-2 w-10 h-10 flex items-center justify-center transition-colors z-10"
-                                type="button"
-                                data-bs-target={`#carousel${post._id}`}
-                                data-bs-slide="prev"
-                              >
-                                <span className="carousel-control-prev-icon w-4 h-4"></span>
-                              </button>
-                              <button
-                                className="carousel-control-next absolute right-2 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-2 w-10 h-10 flex items-center justify-center transition-colors z-10"
-                                type="button"
-                                data-bs-target={`#carousel${post._id}`}
-                                data-bs-slide="next"
-                              >
-                                <span className="carousel-control-next-icon w-4 h-4"></span>
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Card Content */}
-                      <div className="p-6">
-                        {/* Title with Save Button */}
-                        <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-xl font-bold text-gray-800 line-clamp-2 flex-1 mr-4">
-                            {post.title}
-                          </h3>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSave(post._id);
-                            }}
-                            className="p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full hover:from-blue-100 hover:to-purple-100 transition-all duration-300 shadow-sm hover:shadow-md"
-                            title={savedPosts[post._id] ? "Unsave post" : "Save post"}
-                          >
-                            {savedPosts[post._id] ? (
-                              <FaBookmark className="text-blue-600 text-lg" />
-                            ) : (
-                              <FaRegBookmark className="text-gray-600 text-lg" />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Tags */}
-                        {post.tags && post.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            {post.tags.map((tag, index) => (
-                              <span
-                                key={index}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleQuickSearch(tag);
-                                }}
-                                className="px-3 py-1 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 rounded-full text-sm font-medium hover:from-blue-100 hover:to-purple-100 transition-colors cursor-pointer border border-blue-100"
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Author and Date */}
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="flex flex-col">
-                              <span className="text-sm text-gray-500">By</span>
-                              <Link
-                                to={`/profile/${post.user._id}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-gray-800 font-semibold hover:text-blue-600 transition-colors"
-                              >
-                                {post.user.username}
-                              </Link>
-                            </div>
-                            <span className="text-gray-400">•</span>
-                            <span className="text-sm text-gray-500">
-                              {new Date(post.publishedAt).toLocaleDateString()}
-                            </span>
-                          </div>
-
-                          {/* Follow Button */}
-                          {user && user.id !== post.user._id && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                followMap[post.user._id]
-                                  ? handleUnfollow(post.user._id)
-                                  : handleFollow(post.user._id);
-                              }}
-                              disabled={loading[post.user._id]}
-                              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 transform hover:scale-105 ${followMap[post.user._id]
-                                ? "bg-gradient-to-r from-red-50 to-pink-50 text-red-600 border border-red-200 hover:from-red-100 hover:to-pink-100"
-                                : "bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 border border-blue-200 hover:from-blue-100 hover:to-purple-100"
-                                }`}
-                            >
-                              {loading[post.user._id] ? (
-                                <FaSpinner className="animate-spin inline mr-2" />
-                              ) : followMap[post.user._id] ? (
-                                <FaUserMinus className="inline mr-2" />
-                              ) : (
-                                <FaUserPlus className="inline mr-2" />
-                              )}
-                              {followMap[post.user._id] ? "Following" : "Follow"}
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-                          {/* Like Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLike(post._id);
-                            }}
-                            className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all duration-300 ${userLikedPosts[post._id]
-                              ? "bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg transform hover:scale-105"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                              }`}
-                          >
-                            {userLikedPosts[post._id] ? (
-                              <FaHeart className="text-white" />
-                            ) : (
-                              <FaRegHeart className="text-red-500" />
-                            )}
-                            <span className="font-semibold">{likes[post._id] || 0}</span>
-                            
-                          </button>
-
-                          {/* Comments Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              fetchComments(post._id, 1);
-                            }}
-                            className="flex items-center space-x-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 hover:from-blue-100 hover:to-purple-100 transition-all duration-300 transform hover:scale-105"
-                          >
-                            <FaComment />
-                            <span className="font-semibold">{commentCounts[post._id] || 0}</span>
-                            <span>Comments</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <PostCard
+                      key={post._id}
+                      post={post}
+                      user={user}
+                      likes={likes}
+                      userLikedPosts={userLikedPosts}
+                      commentCounts={commentCounts}
+                      savedPosts={savedPosts}
+                      followMap={followMap}
+                      loading={loading}
+                      onCardClick={(e) => handleCardClick(post._id, e)}
+                      onSave={handleSave}
+                      onLike={handleLike}
+                      onFollow={handleFollow}
+                      onUnfollow={handleUnfollow}
+                      onCommentsClick={(postId) => fetchComments(postId, 1)}
+                      onTagClick={handleQuickSearch}
+                    />
                   ))}
                 </div>
 
@@ -795,81 +649,18 @@ export default function Homepage() {
         )}
 
         {/* Comments Modal */}
-        <div className="modal fade" id="commentsModal" tabIndex="-1" aria-labelledby="commentsModalLabel" aria-hidden="true">
-          <div className="modal-dialog modal-dialog-scrollable max-w-lg mx-auto">
-            <div className="modal-content rounded-2xl border-0 shadow-2xl overflow-hidden">
-              <div className="modal-header bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
-                <h5 className="modal-title text-xl font-bold">
-                  {comments.length > 0 ? `Comments (${comments.length})` : 'Comments'}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  data-bs-dismiss="modal"
-                  aria-label="Close"
-                  onClick={() => modalInstance?.hide()}
-                ></button>
-              </div>
-              <div className="modal-body p-6">
-                {comments.length === 0 && !commentsLoading ? (
-                  <div className="text-center py-8">
-                    <FaComment className="text-5xl text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500 text-lg">No comments yet. Be the first to comment!</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                    {comments.map((comment, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gray-50 rounded-xl p-4 hover:bg-white transition-colors duration-300 border border-gray-100"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                              {comment.user?.username?.charAt(0)?.toUpperCase() || 'A'}
-                            </div>
-                            <div>
-                              <strong className="text-gray-800">{comment.user?.username || 'Anonymous'}</strong>
-                              <p className="text-gray-500 text-sm">
-                                {new Date(comment.createdAt).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-gray-700 leading-relaxed">{comment.content}</p>
-                      </div>
-                    ))}
-                    {commentsLoading && <CommentsLoadingSpinner />}
-                    {!commentsHasMore && comments.length > 0 && (
-                      <div className="text-center text-gray-500 py-4 border-t border-gray-200">
-                        No more comments to load
-                      </div>
-                    )}
-                    <div ref={commentsEndRef} className="h-4" />
-                  </div>
-                )}
-
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <textarea
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300 resize-none"
-                    rows="4"
-                    placeholder="Add a thoughtful comment..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.value)}
-                    disabled={!isModalOpen}
-                  ></textarea>
-                  <button
-                    className="w-full mt-4 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handleCommentSubmit}
-                    disabled={newComment.trim() === "" || !isModalOpen}
-                  >
-                    Post Comment
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CommentsModal
+          comments={comments}
+          commentsLoading={commentsLoading}
+          commentsHasMore={commentsHasMore}
+          commentsEndRef={commentsEndRef}
+          isModalOpen={isModalOpen}
+          newComment={newComment}
+          setNewComment={setNewComment}
+          onClose={() => modalInstance?.hide()}
+          onSubmitComment={handleCommentSubmit}
+          CommentsLoadingSpinner={CommentsLoadingSpinner}
+        />
 
         {/* Floating Add Post Button */}
         <button
