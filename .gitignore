@@ -1,2 +1,10 @@
-Backend/text-predictor-api/
-Backend/WritingEnhancement1/
+# Ignore entire ML project
+/Backend/WritingEnhancement1/
+
+# OR ignore models only
+/Backend/WritingEnhancement1/
+
+# Ignore model weights everywhere
+*.safetensors
+*.bin
+*.pt
