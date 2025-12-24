@@ -30,7 +30,8 @@ const Navbar = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState(null);
-  
+  const notificationSoundRef = useRef(null);
+
   const dropdownRef = useRef();
   const searchRef = useRef();
   const notificationsRef = useRef();
@@ -56,7 +57,7 @@ const Navbar = () => {
 
     socket.on("notification", (data) => {
       setUnreadCount((prev) => prev + 1);
-      
+
       setNotifications((prev) => [
         {
           _id: data._id || Date.now(),
@@ -66,6 +67,10 @@ const Navbar = () => {
         },
         ...prev,
       ]);
+      if (notificationSoundRef.current) {
+        notificationSoundRef.current.currentTime = 0;
+        notificationSoundRef.current.play().catch(() => { });
+      }
     });
 
     return () => {
@@ -74,10 +79,42 @@ const Navbar = () => {
     };
   }, [user?._id]);
 
+  // Notification Sound
+  useEffect(() => {
+    const audio = new Audio("/sounds/Notification_Sound.mp3");
+
+    audio.volume = 0.6;
+
+    audio.addEventListener("canplaythrough", () => {
+      console.log("✅ Notification sound loaded and ready");
+    });
+
+    audio.addEventListener("error", (e) => {
+      console.error("❌ Failed to load notification sound", e);
+    });
+
+    notificationSoundRef.current = audio;
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (notificationSoundRef.current) {
+        notificationSoundRef.current.play().catch(() => { });
+        notificationSoundRef.current.pause();
+        notificationSoundRef.current.currentTime = 0;
+      }
+      window.removeEventListener("click", unlockAudio);
+    };
+
+    window.addEventListener("click", unlockAudio);
+    return () => window.removeEventListener("click", unlockAudio);
+  }, []);
+
+
   // Fetch initial notifications
   const fetchInitialNotifications = async () => {
     if (!user || !user._id) return;
-    
+
     setNotificationsLoading(true);
     try {
       const res = await axios.get(
@@ -102,7 +139,7 @@ const Navbar = () => {
   // Load more notifications
   const loadMoreNotifications = async () => {
     if (!user || !user._id || !hasMore || loadingMore || !cursor) return;
-    
+
     setLoadingMore(true);
     try {
       const res = await axios.get(
@@ -114,7 +151,7 @@ const Navbar = () => {
         const newNotifications = res.data.notifications;
         setNotifications(prev => [...prev, ...newNotifications]);
         setHasMore(res.data.hasMore);
-        
+
         if (res.data.hasMore) {
           const last = newNotifications.at(-1);
           setCursor(last.createdAt);
@@ -132,10 +169,10 @@ const Navbar = () => {
   // Handle scroll for infinite loading
   const handleNotificationsScroll = useCallback(() => {
     if (!notificationsContainerRef.current || !hasMore || loadingMore) return;
-    
+
     const container = notificationsContainerRef.current;
     const { scrollTop, scrollHeight, clientHeight } = container;
-    
+
     // Load more when user is near the bottom
     if (scrollHeight - scrollTop - clientHeight < 100) {
       loadMoreNotifications();
@@ -178,7 +215,7 @@ const Navbar = () => {
     if (container && notificationsOpen) {
       container.addEventListener('scroll', handleNotificationsScroll);
     }
-    
+
     return () => {
       if (container) {
         container.removeEventListener('scroll', handleNotificationsScroll);
@@ -281,9 +318,9 @@ const Navbar = () => {
                           <span className="text-xs opacity-80">Loading...</span>
                         )}
                       </div>
-                      
+
                       {/* Notifications container with scroll */}
-                      <div 
+                      <div
                         ref={notificationsContainerRef}
                         className="max-h-96 overflow-y-auto"
                         style={{ scrollbarWidth: 'thin' }}
@@ -317,7 +354,7 @@ const Navbar = () => {
                                 )}
                               </div>
                             ))}
-                            
+
                             {/* Loading indicator for infinite scroll */}
                             {loadingMore && (
                               <div className="py-4 text-center">
@@ -325,7 +362,7 @@ const Navbar = () => {
                                 <p className="text-xs text-gray-500 mt-2">Loading more...</p>
                               </div>
                             )}
-                            
+
                             {/* End of notifications message */}
                             {!hasMore && notifications.length > 0 && (
                               <div className="py-4 text-center text-gray-400 text-sm">
