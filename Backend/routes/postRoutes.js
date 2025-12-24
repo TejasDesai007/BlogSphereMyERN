@@ -42,15 +42,43 @@ router.post('/AddPost', async (req, res) => {
       title,
       content,
       user: userId,
-      tags: tags || [], // Save tags if provided, default to empty array
+      tags: tags || [],
     });
 
+    const actor = await User.findById(userId).select('username');
+
+    // 🔥 FIND FOLLOWERS
+    const followers = await Follow.find({ followed: userId }).select('follower');
+
+    const io = req.app.get("io");
+
+    // 🔔 Notify each follower
+    for (const f of followers) {
+      const notification = await Notification.create({
+        user: f.follower,
+        actor: userId,
+        type: 'post',
+        post: post._id,
+        message: `${actor.username} added a new post.`,
+      });
+
+      io.to(f.follower.toString()).emit("notification", {
+        _id: notification._id,
+        type: "post",
+        message: notification.message,
+        post: post._id,
+        createdAt: notification.createdAt,
+      });
+    }
+
     res.json({ message: 'Successfully posted!', postId: post._id });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'DB error' });
   }
 });
+
 
 // 🖼️ Upload Images to Cloudinary
 router.post('/upload', upload.array('images', 5), async (req, res) => {
@@ -387,32 +415,39 @@ router.get('/FetchPost/:postID', async (req, res) => {
 // 👍 Like / 👎 Unlike
 router.post('/like', async (req, res) => {
   const { postID, userID } = req.body;
+
   try {
     await Like.create({ post: postID, user: userID });
 
-    // Create notification for post author (if not liking own post)
-    try {
-      const post = await Post.findById(postID).select('user');
-      if (post && post.user.toString() !== userID) {
-        const actor = await User.findById(userID).select('username');
-        await Notification.create({
-          user: post.user,
-          actor: userID,
-          type: 'like',
-          post: postID,
-          message: `${actor?.username || 'Someone'} liked your post.`
-        });
-      }
-    } catch (notifyErr) {
-      console.error('Error creating like notification:', notifyErr);
+    const post = await Post.findById(postID).select('user');
+    if (post && post.user.toString() !== userID) {
+      const actor = await User.findById(userID).select('username');
+
+      const notification = await Notification.create({
+        user: post.user,
+        actor: userID,
+        type: 'like',
+        post: postID,
+        message: `${actor.username} liked your post.`,
+      });
+
+      // 🔔 REAL-TIME PUSH
+      const io = req.app.get("io");
+      io.to(post.user.toString()).emit("notification", {
+        _id: notification._id,
+        type: "like",
+        message: notification.message,
+        post: postID,
+        createdAt: notification.createdAt,
+      });
     }
 
-    // Return updated count
     const count = await Like.countDocuments({ post: postID });
     res.json({ message: 'Post liked', count });
+
   } catch (err) {
     if (err.code === 11000) {
-      const count = await Like.countDocuments({ post: req.body.postID });
+      const count = await Like.countDocuments({ post: postID });
       return res.status(200).json({ message: 'Already liked', count });
     }
     console.error(err);
@@ -420,13 +455,14 @@ router.post('/like', async (req, res) => {
   }
 });
 
+
 router.post('/unlike', async (req, res) => {
   const { postID, userID } = req.body;
   await Like.deleteOne({ post: postID, user: userID });
 
   // Return updated count
-    const count = await Like.countDocuments({ post: postID });
-    res.json({ message: 'Post unliked', count });
+  const count = await Like.countDocuments({ post: postID });
+  res.json({ message: 'Post unliked', count });
 });
 
 router.get('/user-liked/:userID', async (req, res) => {
@@ -481,34 +517,45 @@ router.get('/comments-count', async (req, res) => {
   agg.forEach(a => result[a._id] = a.count);
   res.json(result);
 });
-
 router.post('/comments', async (req, res) => {
   const { postID, userID, comment } = req.body;
-  if (!postID || !userID || !comment?.trim()) return res.status(400).json({ message: 'Missing fields' });
-
-  const c = await Comment.create({ post: postID, user: userID, content: comment });
-
-  // Create notification for post author (if not commenting on own post)
-  try {
-    const post = await Post.findById(postID).select('user');
-    if (post && post.user.toString() !== userID) {
-      const actor = await User.findById(userID).select('username');
-      await Notification.create({
-        user: post.user,
-        actor: userID,
-        type: 'comment',
-        post: postID,
-        message: `${actor?.username || 'Someone'} commented on your post.`
-      });
-    }
-  } catch (notifyErr) {
-    console.error('Error creating comment notification:', notifyErr);
+  if (!postID || !userID || !comment?.trim()) {
+    return res.status(400).json({ message: 'Missing fields' });
   }
 
-  // Return updated count
+  const c = await Comment.create({
+    post: postID,
+    user: userID,
+    content: comment,
+  });
+
+  const post = await Post.findById(postID).select('user');
+  if (post && post.user.toString() !== userID) {
+    const actor = await User.findById(userID).select('username');
+
+    const notification = await Notification.create({
+      user: post.user,
+      actor: userID,
+      type: 'comment',
+      post: postID,
+      message: `${actor.username} commented on your post.`,
+    });
+
+    // 🔔 REAL-TIME PUSH
+    const io = req.app.get("io");
+    io.to(post.user.toString()).emit("notification", {
+      _id: notification._id,
+      type: "comment",
+      message: notification.message,
+      post: postID,
+      createdAt: notification.createdAt,
+    });
+  }
+
   const count = await Comment.countDocuments({ post: postID });
   res.json({ message: 'Comment added', commentId: c._id, count });
 });
+
 
 // 🔖 Save / Unsave
 router.post('/savepost', async (req, res) => {
@@ -599,7 +646,7 @@ router.get('/user/:userId', async (req, res) => {
 router.get('/popular-tags', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
-    
+
     const pipeline = [
       { $unwind: '$tags' },
       { $group: { _id: '$tags', count: { $sum: 1 } } },
@@ -621,15 +668,15 @@ router.get('/users-suggestions', async (req, res) => {
   try {
     const query = req.query.q || '';
     const limit = parseInt(req.query.limit) || 10;
-    
+
     const User = require('../models/User'); // Adjust path as needed
-    
+
     const users = await User.find({
       username: { $regex: query, $options: 'i' }
     })
-    .select('username _id')
-    .limit(limit)
-    .lean();
+      .select('username _id')
+      .limit(limit)
+      .lean();
 
     res.json(users);
   } catch (err) {
@@ -642,7 +689,7 @@ router.get('/users-suggestions', async (req, res) => {
 router.post('/follows', async (req, res) => {
   try {
     const { followerId, followedId } = req.body;
-    
+
     if (!followerId || !followedId) {
       return res.status(400).json({ message: 'Missing followerId or followedId' });
     }
@@ -671,14 +718,14 @@ router.post('/follows', async (req, res) => {
 router.delete('/follow', async (req, res) => {
   try {
     const { followerId, followedId } = req.body;
-    
+
     if (!followerId || !followedId) {
       return res.status(400).json({ message: 'Missing followerId or followedId' });
     }
 
-    const result = await Follow.deleteOne({ 
-      follower: followerId, 
-      followed: followedId 
+    const result = await Follow.deleteOne({
+      follower: followerId,
+      followed: followedId
     });
 
     if (result.deletedCount === 0) {
@@ -695,14 +742,14 @@ router.delete('/follow', async (req, res) => {
 router.get('/follows/check', async (req, res) => {
   try {
     const { followerId, followedId } = req.query;
-    
+
     if (!followerId || !followedId) {
       return res.status(400).json({ message: 'Missing followerId or followedId' });
     }
 
-    const follow = await Follow.findOne({ 
-      follower: followerId, 
-      followed: followedId 
+    const follow = await Follow.findOne({
+      follower: followerId,
+      followed: followedId
     });
 
     res.json({ isFollowing: !!follow });

@@ -25,9 +25,10 @@ router.get("/check", async (req, res) => {
 router.post("/", async (req, res) => {
   const { followerId, followedId } = req.body;
 
-  console.log("Received follow request:", { followerId, followedId });
-
-  if (!mongoose.Types.ObjectId.isValid(followerId) || !mongoose.Types.ObjectId.isValid(followedId)) {
+  if (
+    !mongoose.Types.ObjectId.isValid(followerId) ||
+    !mongoose.Types.ObjectId.isValid(followedId)
+  ) {
     return res.status(400).json({ message: "Invalid user IDs" });
   }
 
@@ -37,38 +38,37 @@ router.post("/", async (req, res) => {
 
   try {
     const exists = await Follow.findOne({ follower: followerId, followed: followedId });
-    if (exists) return res.status(200).json({ message: "Already following" });
-
-    // ✅ Check if both users exist
-    const [followerExists, followedExists] = await Promise.all([
-      User.findById(followerId),
-      User.findById(followedId)
-    ]);
-
-    if (!followerExists || !followedExists) {
-      return res.status(404).json({ message: "One or both users not found" });
+    if (exists) {
+      return res.status(200).json({ message: "Already following" });
     }
 
-    const follow = new Follow({ follower: followerId, followed: followedId });
-    await follow.save();
+    // Save follow
+    await Follow.create({ follower: followerId, followed: followedId });
 
-    // Create follow notification for followed user
-    try {
-      const actor = await User.findById(followerId).select("username");
-      await Notification.create({
-        user: followedId,
-        actor: followerId,
-        type: "follow",
-        message: `${actor?.username || "Someone"} started following you.`,
-      });
-    } catch (notifyErr) {
-      console.error("Error creating follow notification:", notifyErr);
-    }
+    // Fetch actor username
+    const actor = await User.findById(followerId).select("username");
 
-    res.status(201).json({ message: "Followed successfully" });
+    // Save notification
+    const notification = await Notification.create({
+      user: followedId,
+      actor: followerId,
+      type: "follow",
+      message: `${actor.username} started following you.`,
+    });
+
+    // 🔔 REAL-TIME SOCKET PUSH
+    const io = req.app.get("io");
+    io.to(followedId.toString()).emit("notification", {
+      _id: notification._id,
+      message: notification.message,
+      type: notification.type,
+      createdAt: notification.createdAt,
+    });
+
+    return res.status(201).json({ message: "Followed successfully" });
   } catch (err) {
-    console.error("Error following:", err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error following user:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

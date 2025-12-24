@@ -1,28 +1,35 @@
 const express = require("express");
 const Notification = require("../models/Notification");
-
+const mongoose = require("mongoose");
 const router = express.Router();
 
-// Get latest notifications for a user
 router.get("/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const notifications = await Notification.find({ user: userId })
-      .populate("actor", "username")
-      .populate("post", "title")
-      .sort({ createdAt: -1 })
-      .limit(30)
-      .lean();
+  const { userId } = req.params;
+  const { cursor, limit = 20 } = req.query;
 
-    const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-    res.json({ notifications, unreadCount });
-  } catch (err) {
-    console.error("Error fetching notifications:", err);
-    res.status(500).json({ message: "Failed to fetch notifications" });
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.json({ notifications: [], hasMore: false });
   }
-});
 
+  const query = { user: userId };
+
+  // 👇 fetch older notifications
+  if (cursor) {
+    query.createdAt = { $lt: new Date(cursor) };
+  }
+
+  const notifications = await Notification.find(query)
+    .sort({ createdAt: -1 })
+    .limit(Number(limit))
+    .lean();
+
+  const hasMore = notifications.length === Number(limit);
+
+  res.json({
+    notifications,
+    hasMore,
+  });
+});
 // Mark all notifications as read for a user
 router.post("/mark-read", async (req, res) => {
   try {

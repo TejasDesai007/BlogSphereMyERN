@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { socket } from "./socket"; // adjust path if needed
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -26,13 +27,166 @@ const Navbar = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState(null);
+  
   const dropdownRef = useRef();
   const searchRef = useRef();
   const notificationsRef = useRef();
+  const notificationsContainerRef = useRef();
   const navigate = useNavigate();
-  const user = JSON.parse(sessionStorage.getItem("user"));
+
+  const rawUser = JSON.parse(sessionStorage.getItem("user"));
+  const user = rawUser
+    ? {
+      ...rawUser,
+      _id: rawUser._id || rawUser.id,
+    }
+    : null;
+
   const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+  // Socket connection for real-time notifications
+  useEffect(() => {
+    if (!user || !user._id) return;
+
+    socket.connect();
+    socket.emit("join", user._id);
+
+    socket.on("notification", (data) => {
+      setUnreadCount((prev) => prev + 1);
+      
+      setNotifications((prev) => [
+        {
+          _id: data._id || Date.now(),
+          message: data.message,
+          isRead: false,
+          createdAt: data.createdAt || new Date(),
+        },
+        ...prev,
+      ]);
+    });
+
+    return () => {
+      socket.off("notification");
+      socket.disconnect();
+    };
+  }, [user?._id]);
+
+  // Fetch initial notifications
+  const fetchInitialNotifications = async () => {
+    if (!user || !user._id) return;
+    
+    setNotificationsLoading(true);
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/api/notifications/${user._id}`,
+        { withCredentials: true }
+      );
+
+      setNotifications(res.data.notifications);
+      setHasMore(res.data.hasMore);
+
+      if (res.data.notifications.length > 0) {
+        const last = res.data.notifications.at(-1);
+        setCursor(last.createdAt);
+      }
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  // Load more notifications
+  const loadMoreNotifications = async () => {
+    if (!user || !user._id || !hasMore || loadingMore || !cursor) return;
+    
+    setLoadingMore(true);
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/api/notifications/${user._id}?cursor=${cursor}&limit=15`,
+        { withCredentials: true }
+      );
+
+      if (res.data.notifications.length > 0) {
+        const newNotifications = res.data.notifications;
+        setNotifications(prev => [...prev, ...newNotifications]);
+        setHasMore(res.data.hasMore);
+        
+        if (res.data.hasMore) {
+          const last = newNotifications.at(-1);
+          setCursor(last.createdAt);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Error loading more notifications:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Handle scroll for infinite loading
+  const handleNotificationsScroll = useCallback(() => {
+    if (!notificationsContainerRef.current || !hasMore || loadingMore) return;
+    
+    const container = notificationsContainerRef.current;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    
+    // Load more when user is near the bottom
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      loadMoreNotifications();
+    }
+  }, [hasMore, loadingMore, cursor, user?._id]);
+
+  // Toggle notifications panel
+  const handleNotificationsToggle = async () => {
+    if (!user || !user._id) {
+      console.warn("Notifications toggle skipped: user not ready", user);
+      return;
+    }
+
+    const willOpen = !notificationsOpen;
+    setNotificationsOpen(willOpen);
+
+    if (willOpen) {
+      // Reset and fetch fresh notifications when opening
+      setNotifications([]);
+      setHasMore(true);
+      setCursor(null);
+      await fetchInitialNotifications();
+
+      try {
+        await axios.post(
+          `${BASE_URL}/api/notifications/mark-read`,
+          { userId: user._id },
+          { withCredentials: true }
+        );
+        setUnreadCount(0);
+      } catch (err) {
+        console.error("Error marking notifications as read:", err);
+      }
+    }
+  };
+
+  // Add scroll event listener
+  useEffect(() => {
+    const container = notificationsContainerRef.current;
+    if (container && notificationsOpen) {
+      container.addEventListener('scroll', handleNotificationsScroll);
+    }
+    
+    return () => {
+      if (container) {
+        container.removeEventListener('scroll', handleNotificationsScroll);
+      }
+    };
+  }, [notificationsOpen, handleNotificationsScroll]);
+
+  // Event listeners for clicks outside
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
@@ -59,44 +213,6 @@ const Navbar = () => {
     };
   }, []);
 
-  const fetchNotifications = async () => {
-    if (!user) return;
-    setNotificationsLoading(true);
-    try {
-      const res = await axios.get(`${BASE_URL}/api/notifications/${user.id}`);
-      setNotifications(res.data.notifications || []);
-      setUnreadCount(res.data.unreadCount || 0);
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-    } finally {
-      setNotificationsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!user) return;
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleNotificationsToggle = async () => {
-    if (!user) return;
-    const willOpen = !notificationsOpen;
-    setNotificationsOpen(willOpen);
-    if (willOpen) {
-      await fetchNotifications();
-      try {
-        await axios.post(`${BASE_URL}/api/notifications/mark-read`, {
-          userId: user.id,
-        });
-        setUnreadCount(0);
-      } catch (err) {
-        console.error("Error marking notifications as read:", err);
-      }
-    }
-  };
-
   const handleLogout = () => {
     sessionStorage.removeItem("user");
     navigate("/login");
@@ -106,8 +222,8 @@ const Navbar = () => {
     <>
       {/* Navigation Bar - Fixed with proper height */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 h-16 ${scrolled
-          ? "bg-white/95 backdrop-blur-lg shadow-xl py-2 dark:bg-gray-900/95 dark:shadow-gray-900/50"
-          : "bg-gradient-to-r from-blue-600/90 via-purple-600/90 to-pink-600/90 backdrop-blur-md py-3"
+        ? "bg-white/95 backdrop-blur-lg shadow-xl py-2 dark:bg-gray-900/95 dark:shadow-gray-900/50"
+        : "bg-gradient-to-r from-blue-600/90 via-purple-600/90 to-pink-600/90 backdrop-blur-md py-3"
         }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
           <div className="flex items-center justify-between h-full">
@@ -133,12 +249,6 @@ const Navbar = () => {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-1">
-              {/* Search Bar */}
-              <div className="relative" ref={searchRef}>
-
-
-              </div>
-
               {/* Add Post Button */}
               <Link
                 to="/add-post"
@@ -164,46 +274,71 @@ const Navbar = () => {
                   </button>
 
                   {notificationsOpen && (
-                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl overflow-hidden animate-slideDown z-50">
+                    <div className="absolute right-0 mt-3 w-96 bg-white rounded-xl shadow-2xl overflow-hidden animate-slideDown z-50">
                       <div className="bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-3 text-white flex items-center justify-between">
                         <span className="font-semibold">Notifications</span>
                         {notificationsLoading && (
                           <span className="text-xs opacity-80">Loading...</span>
                         )}
                       </div>
-                      <div className="max-h-80 overflow-y-auto">
-                        {notifications.length === 0 ? (
-                          <div className="p-4 text-center text-gray-500 text-sm">
-                            No notifications yet.
+                      
+                      {/* Notifications container with scroll */}
+                      <div 
+                        ref={notificationsContainerRef}
+                        className="max-h-96 overflow-y-auto"
+                        style={{ scrollbarWidth: 'thin' }}
+                      >
+                        {notifications.length === 0 && !notificationsLoading ? (
+                          <div className="p-6 text-center text-gray-500">
+                            <FaBell className="mx-auto text-3xl text-gray-300 mb-3" />
+                            <p>No notifications yet.</p>
                           </div>
                         ) : (
-                          notifications.map((n) => (
-                            <div
-                              key={n._id}
-                              className={`px-4 py-3 text-sm border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-start ${
-                                !n.isRead ? "bg-blue-50/70" : "bg-white"
-                              }`}
-                            >
-                              <div>
-                                <p className="text-gray-800">{n.message}</p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {new Date(n.createdAt).toLocaleString()}
-                                </p>
+                          <>
+                            {notifications.map((n) => (
+                              <div
+                                key={n._id}
+                                className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-start transition-colors ${!n.isRead ? "bg-blue-50/70" : "bg-white"
+                                  }`}
+                              >
+                                <div className="flex-1">
+                                  <p className="text-gray-800 text-sm">{n.message}</p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {new Date(n.createdAt).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </p>
+                                </div>
+                                {!n.isRead && (
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></div>
+                                )}
                               </div>
-                            </div>
-                          ))
+                            ))}
+                            
+                            {/* Loading indicator for infinite scroll */}
+                            {loadingMore && (
+                              <div className="py-4 text-center">
+                                <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                <p className="text-xs text-gray-500 mt-2">Loading more...</p>
+                              </div>
+                            )}
+                            
+                            {/* End of notifications message */}
+                            {!hasMore && notifications.length > 0 && (
+                              <div className="py-4 text-center text-gray-400 text-sm">
+                                <p>No more notifications</p>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
               )}
-
-              {/* Saved Posts */}
-
-
-              {/* Dark Mode Toggle */}
-
 
               {/* User Dropdown */}
               <div className="relative" ref={dropdownRef}>
@@ -267,8 +402,8 @@ const Navbar = () => {
                             <FaUser className="text-blue-500" />
                             <span>My Profile</span>
                           </Link>
-                          
-                          
+
+
                           <button
                             onClick={() => {
                               handleLogout();
@@ -407,7 +542,7 @@ const Navbar = () => {
       )}
 
       {/* Add some custom styles for animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes slideDown {
           from {
             opacity: 0;
